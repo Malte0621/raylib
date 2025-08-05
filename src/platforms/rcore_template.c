@@ -71,7 +71,7 @@ static PlatformData platform = { 0 };   // Platform specific data
 //----------------------------------------------------------------------------------
 // Module Internal Functions Declaration
 //----------------------------------------------------------------------------------
-int InitPlatform(void);          // Initialize platform (graphics, inputs and more)
+int InitPlatform(bool headless);          // Initialize platform (graphics, inputs and more)
 bool InitGraphicsDevice(void);   // Initialize graphics device
 
 //----------------------------------------------------------------------------------
@@ -293,7 +293,7 @@ const char *GetClipboardText(void)
 }
 
 // Show mouse cursor
-void ShowCursor(void)
+void ShowCursor2(void)
 {
     CORE.Input.Mouse.cursorHidden = false;
 }
@@ -435,7 +435,7 @@ void PollInputEvents(void)
 //----------------------------------------------------------------------------------
 
 // Initialize platform: graphics, inputs and more
-int InitPlatform(void)
+int InitPlatform(bool headless)
 {
     // TODO: Initialize graphic device: display/window
     // It usually requires setting up the platform display system configuration

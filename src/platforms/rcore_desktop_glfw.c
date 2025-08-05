@@ -103,7 +103,7 @@ static PlatformData platform = { 0 };   // Platform specific data
 //----------------------------------------------------------------------------------
 // Module Internal Functions Declaration
 //----------------------------------------------------------------------------------
-int InitPlatform(void);          // Initialize platform (graphics, inputs and more)
+int InitPlatform(bool headless);          // Initialize platform (graphics, inputs and more)
 void ClosePlatform(void);        // Close platform
 
 // Error callback event
@@ -995,7 +995,7 @@ Image GetClipboardImage(void)
 #endif // SUPPORT_CLIPBOARD_IMAGE
 
 // Show mouse cursor
-void ShowCursor(void)
+void ShowCursor2(void)
 {
     glfwSetInputMode(platform.handle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     CORE.Input.Mouse.cursorHidden = false;
@@ -1281,7 +1281,7 @@ static void SetDimensionsFromMonitor(GLFWmonitor *monitor)
 }
 
 // Initialize platform: graphics, inputs and more
-int InitPlatform(void)
+int InitPlatform(bool headless)
 {
     glfwSetErrorCallback(ErrorCallback);
 /*

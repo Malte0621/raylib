@@ -249,7 +249,7 @@ static const KeyboardKey mapKeycode[KEYCODE_MAP_SIZE] = {
 //----------------------------------------------------------------------------------
 // Module Internal Functions Declaration
 //----------------------------------------------------------------------------------
-int InitPlatform(void);          // Initialize platform (graphics, inputs and more)
+int InitPlatform(bool headless);          // Initialize platform (graphics, inputs and more)
 void ClosePlatform(void);        // Close platform
 
 static void AndroidCommandCallback(struct android_app *app, int32_t cmd);           // Process Android activity lifecycle commands
@@ -516,7 +516,7 @@ const char *GetClipboardText(void)
 }
 
 // Show mouse cursor
-void ShowCursor(void)
+void ShowCursor2(void)
 {
     CORE.Input.Mouse.cursorHidden = false;
 }
@@ -709,7 +709,7 @@ void PollInputEvents(void)
 //----------------------------------------------------------------------------------
 
 // Initialize platform: graphics, inputs and more
-int InitPlatform(void)
+int InitPlatform(bool headless)
 {
     // Initialize display basic configuration
     //----------------------------------------------------------------------------
@@ -987,7 +987,7 @@ static void AndroidCommandCallback(struct android_app *app, int32_t cmd)
 
                     // Initialize OpenGL context (states and resources)
                     // NOTE: CORE.Window.currentFbo.width and CORE.Window.currentFbo.height not used, just stored as globals in rlgl
-                    rlglInit(CORE.Window.currentFbo.width, CORE.Window.currentFbo.height);
+                    rlglInit(CORE.Window.currentFbo.width, CORE.Window.currentFbo.height, false);
                     isGpuReady = true;
 
                     // Setup default viewport

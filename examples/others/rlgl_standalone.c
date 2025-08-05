@@ -164,7 +164,7 @@ int main(void)
     //--------------------------------------------------------
 
     // Initialize OpenGL context (states and resources)
-    rlglInit(screenWidth, screenHeight);
+    rlglInit(screenWidth, screenHeight, false);
 
     // Initialize viewport and internal projection/modelview matrices
     rlViewport(0, 0, screenWidth, screenHeight);

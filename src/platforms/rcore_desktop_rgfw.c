@@ -50,8 +50,8 @@
     #define RGFW_OPENGL_ES2
 #endif
 
-void ShowCursor(void);
-void CloseWindow(void);
+void ShowCursor2(void);
+void CloseWindow2(void);
 
 #if defined(__linux__)
     #define _INPUT_EVENT_CODES_H
@@ -66,8 +66,8 @@ void CloseWindow(void);
 #if defined(_WIN32) || defined(_WIN64)
     #define WIN32_LEAN_AND_MEAN
 	#define Rectangle rectangle_win32
-    #define CloseWindow CloseWindow_win32
-    #define ShowCursor __imp_ShowCursor
+    #define CloseWindow2 CloseWindow_win32
+    #define ShowCursor2 __imp_ShowCursor
 	#define _APISETSTRING_
 	
 	#undef MAX_PATH
@@ -84,8 +84,8 @@ void CloseWindow(void);
 
 #if defined(_WIN32) || defined(_WIN64)
     #undef DrawText
-    #undef ShowCursor
-    #undef CloseWindow
+    #undef ShowCursor2
+    #undef CloseWindow2
     #undef Rectangle
 
 	#undef MAX_PATH
@@ -223,7 +223,7 @@ static const unsigned short keyMappingRGFW[] = {
 //----------------------------------------------------------------------------------
 // Module Internal Functions Declaration
 //----------------------------------------------------------------------------------
-int InitPlatform(void);          // Initialize platform (graphics, inputs and more)
+int InitPlatform(bool headless);          // Initialize platform (graphics, inputs and more)
 bool InitGraphicsDevice(void);   // Initialize graphics device
 
 //----------------------------------------------------------------------------------
@@ -702,7 +702,7 @@ Image GetClipboardImage(void)
 #endif // SUPPORT_CLIPBOARD_IMAGE
 
 // Show mouse cursor
-void ShowCursor(void)
+void ShowCursor2(void)
 {
     RGFW_window_showMouse(platform.window, true);
     CORE.Input.Mouse.cursorHidden = false;
@@ -1244,7 +1244,7 @@ void PollInputEvents(void)
 //----------------------------------------------------------------------------------
 
 // Initialize platform: graphics, inputs and more
-int InitPlatform(void)
+int InitPlatform(bool headless)
 {
     // Initialize RGFW internal global state, only required systems
     unsigned int flags = RGFW_CENTER | RGFW_ALLOW_DND;

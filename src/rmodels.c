@@ -147,22 +147,22 @@
 // Module specific Functions Declaration
 //----------------------------------------------------------------------------------
 #if defined(SUPPORT_FILEFORMAT_OBJ)
-static Model LoadOBJ(const char *fileName);     // Load OBJ mesh data
+static Model LoadOBJ(const char *fileText, const char *fileName, bool dontUnload);     // Load OBJ mesh data
 #endif
 #if defined(SUPPORT_FILEFORMAT_IQM)
-static Model LoadIQM(const char *fileName);     // Load IQM mesh data
+static Model LoadIQM(const char *fileData, int dataSize, const char *fileName, bool dontUnload);     // Load IQM mesh data
 static ModelAnimation *LoadModelAnimationsIQM(const char *fileName, int *animCount);   // Load IQM animation data
 #endif
 #if defined(SUPPORT_FILEFORMAT_GLTF)
-static Model LoadGLTF(const char *fileName);    // Load GLTF mesh data
-static ModelAnimation *LoadModelAnimationsGLTF(const char *fileName, int *animCount);  // Load GLTF animation data
+static Model LoadGLTF(const char *fileData, int dataSize, const char *fileName, bool dontUnload);    // Load GLTF mesh data
+static ModelAnimation *LoadModelAnimationsGLTF(const char * fileName, int *animCount);  // Load GLTF animation data
 #endif
 #if defined(SUPPORT_FILEFORMAT_VOX)
-static Model LoadVOX(const char *filename);     // Load VOX mesh data
+static Model LoadVOX(const char *fileData, int dataSize, const char *fileName, bool dontUnload);     // Load VOX mesh data
 #endif
 #if defined(SUPPORT_FILEFORMAT_M3D)
-static Model LoadM3D(const char *filename);     // Load M3D mesh data
-static ModelAnimation *LoadModelAnimationsM3D(const char *fileName, int *animCount);   // Load M3D animation data
+static Model LoadM3D(const char *fileData, int dataSize, const char *fileName, bool dontUnload);     // Load M3D mesh data
+static ModelAnimation *LoadModelAnimationsM3D(const char * fileName, int *animCount);   // Load M3D animation data
 #endif
 #if defined(SUPPORT_FILEFORMAT_OBJ) || defined(SUPPORT_FILEFORMAT_MTL)
 static void ProcessMaterialsOBJ(Material *rayMaterials, tinyobj_material_t *materials, int materialCount);  // Process obj materials
@@ -1087,24 +1087,24 @@ void DrawGrid(int slices, float spacing)
 }
 
 // Load model from files (mesh and material)
-Model LoadModel(const char *fileName)
+Model LoadModelFromMemory(const char *fileData, int dataSize, const char *fileName, bool dontUnload)
 {
     Model model = { 0 };
 
 #if defined(SUPPORT_FILEFORMAT_OBJ)
-    if (IsFileExtension(fileName, ".obj")) model = LoadOBJ(fileName);
+    if (IsFileExtension(fileName, ".obj")) model = LoadOBJ(fileData, fileName, dontUnload);
 #endif
 #if defined(SUPPORT_FILEFORMAT_IQM)
-    if (IsFileExtension(fileName, ".iqm")) model = LoadIQM(fileName);
+    if (IsFileExtension(fileName, ".iqm")) model = LoadIQM(fileData, dataSize, fileName, dontUnload);
 #endif
 #if defined(SUPPORT_FILEFORMAT_GLTF)
-    if (IsFileExtension(fileName, ".gltf") || IsFileExtension(fileName, ".glb")) model = LoadGLTF(fileName);
+    if (IsFileExtension(fileName, ".gltf") || IsFileExtension(fileName, ".glb")) model = LoadGLTF(fileData, dataSize, fileName, dontUnload);
 #endif
 #if defined(SUPPORT_FILEFORMAT_VOX)
-    if (IsFileExtension(fileName, ".vox")) model = LoadVOX(fileName);
+    if (IsFileExtension(fileName, ".vox")) model = LoadVOX(fileData, dataSize, fileName, dontUnload);
 #endif
 #if defined(SUPPORT_FILEFORMAT_M3D)
-    if (IsFileExtension(fileName, ".m3d")) model = LoadM3D(fileName);
+    if (IsFileExtension(fileName, ".m3d")) model = LoadM3D(fileData, dataSize, fileName, dontUnload);
 #endif
 
     // Make sure model transform is set to identity matrix!
@@ -1129,6 +1129,30 @@ Model LoadModel(const char *fileName)
     }
 
     return model;
+}
+
+// Load model from files (mesh and material)
+Model LoadModel(const char *fileName)
+{
+    int dataSize = 0;
+#if defined(SUPPORT_FILEFORMAT_OBJ)
+    if (IsFileExtension(fileName, ".obj")) return LoadModelFromMemory(LoadFileText(fileName), dataSize, fileName, false);
+#endif
+#if defined(SUPPORT_FILEFORMAT_IQM)
+    if (IsFileExtension(fileName, ".iqm")) return LoadModelFromMemory(LoadFileData(fileName, &dataSize), dataSize, fileName, false);
+#endif
+#if defined(SUPPORT_FILEFORMAT_GLTF)
+    if (IsFileExtension(fileName, ".gltf") || IsFileExtension(fileName, ".glb")) return LoadModelFromMemory(LoadFileData(fileName, &dataSize), dataSize, fileName, false);
+#endif
+#if defined(SUPPORT_FILEFORMAT_VOX)
+    if (IsFileExtension(fileName, ".vox")) return LoadModelFromMemory(LoadFileData(fileName, &dataSize), dataSize, fileName, false);
+#endif
+#if defined(SUPPORT_FILEFORMAT_M3D)
+    if (IsFileExtension(fileName, ".m3d")) return LoadModelFromMemory(LoadFileData(fileName, &dataSize), dataSize, fileName, false);
+ 
+    Model model = { 0 };
+    return model;
+#endif
 }
 
 // Load model from generated mesh
@@ -2138,7 +2162,7 @@ static void ProcessMaterialsOBJ(Material *materials, tinyobj_material_t *mats, i
         materials[m].maps[MATERIAL_MAP_SPECULAR].value = 0.0f;
 
         if (mats[m].bump_texname != NULL) materials[m].maps[MATERIAL_MAP_NORMAL].texture = LoadTexture(mats[m].bump_texname);  //char *bump_texname; // map_bump, bump
-        materials[m].maps[MATERIAL_MAP_NORMAL].color = WHITE;
+        materials[m].maps[MATERIAL_MAP_NORMAL].color = COLOR_WHITE;
         materials[m].maps[MATERIAL_MAP_NORMAL].value = mats[m].shininess;
 
         materials[m].maps[MATERIAL_MAP_EMISSION].color = (Color){ (unsigned char)(mats[m].emission[0]*255.0f), (unsigned char)(mats[m].emission[1]*255.0f), (unsigned char)(mats[m].emission[2]*255.0f), 255 }; //float emission[3];
@@ -2149,7 +2173,7 @@ static void ProcessMaterialsOBJ(Material *materials, tinyobj_material_t *mats, i
 #endif
 
 // Load materials from model file
-Material *LoadMaterials(const char *fileName, int *materialCount)
+Material *LoadMaterials(const char *fileName, int dataSize, int *materialCount)
 {
     Material *materials = NULL;
     unsigned int count = 0;
@@ -2192,8 +2216,8 @@ Material LoadMaterialDefault(void)
     //material.maps[MATERIAL_MAP_NORMAL].texture;         // NOTE: By default, not set
     //material.maps[MATERIAL_MAP_SPECULAR].texture;       // NOTE: By default, not set
 
-    material.maps[MATERIAL_MAP_DIFFUSE].color = WHITE;    // Diffuse color
-    material.maps[MATERIAL_MAP_SPECULAR].color = WHITE;   // Specular color
+    material.maps[MATERIAL_MAP_DIFFUSE].color = COLOR_WHITE;    // Diffuse color
+    material.maps[MATERIAL_MAP_SPECULAR].color = COLOR_WHITE;   // Specular color
 
     return material;
 }
@@ -2245,7 +2269,7 @@ void SetModelMeshMaterial(Model *model, int meshId, int materialId)
 }
 
 // Load model animations from file
-ModelAnimation *LoadModelAnimations(const char *fileName, int *animCount)
+ModelAnimation *LoadModelAnimations(const char *fileName, int dataSize, int *animCount)
 {
     ModelAnimation *animations = NULL;
 
@@ -3262,7 +3286,7 @@ Mesh GenMeshCubicmap(Image cubicmap, Vector3 cubeSize)
             Vector3 v8 = { w*(x + 0.5f), 0, h*(z + 0.5f) };
 
             // We check pixel color to be WHITE -> draw full cube
-            if (COLOR_EQUAL(pixels[z*cubicmap.width + x], WHITE))
+            if (COLOR_EQUAL(pixels[z*cubicmap.width + x], COLOR_WHITE))
             {
                 // Define triangles and checking collateral cubes
                 //------------------------------------------------
@@ -3319,7 +3343,7 @@ Mesh GenMeshCubicmap(Image cubicmap, Vector3 cubeSize)
                 tcCounter += 6;
 
                 // Checking cube on bottom of current cube
-                if (((z < cubicmap.height - 1) && COLOR_EQUAL(pixels[(z + 1)*cubicmap.width + x], BLACK)) || (z == cubicmap.height - 1))
+                if (((z < cubicmap.height - 1) && COLOR_EQUAL(pixels[(z + 1)*cubicmap.width + x], COLOR_BLACK)) || (z == cubicmap.height - 1))
                 {
                     // Define front triangles (2 tris, 6 vertex) --> v2 v7 v3, v3 v7 v8
                     // NOTE: Collateral occluded faces are not generated
@@ -3349,7 +3373,7 @@ Mesh GenMeshCubicmap(Image cubicmap, Vector3 cubeSize)
                 }
 
                 // Checking cube on top of current cube
-                if (((z > 0) && COLOR_EQUAL(pixels[(z - 1)*cubicmap.width + x], BLACK)) || (z == 0))
+                if (((z > 0) && COLOR_EQUAL(pixels[(z - 1)*cubicmap.width + x], COLOR_BLACK)) || (z == 0))
                 {
                     // Define back triangles (2 tris, 6 vertex) --> v1 v5 v6, v1 v4 v5
                     // NOTE: Collateral occluded faces are not generated
@@ -3379,7 +3403,7 @@ Mesh GenMeshCubicmap(Image cubicmap, Vector3 cubeSize)
                 }
 
                 // Checking cube on right of current cube
-                if (((x < cubicmap.width - 1) && COLOR_EQUAL(pixels[z*cubicmap.width + (x + 1)], BLACK)) || (x == cubicmap.width - 1))
+                if (((x < cubicmap.width - 1) && COLOR_EQUAL(pixels[z*cubicmap.width + (x + 1)], COLOR_BLACK)) || (x == cubicmap.width - 1))
                 {
                     // Define right triangles (2 tris, 6 vertex) --> v3 v8 v4, v4 v8 v5
                     // NOTE: Collateral occluded faces are not generated
@@ -3409,7 +3433,7 @@ Mesh GenMeshCubicmap(Image cubicmap, Vector3 cubeSize)
                 }
 
                 // Checking cube on left of current cube
-                if (((x > 0) && COLOR_EQUAL(pixels[z*cubicmap.width + (x - 1)], BLACK)) || (x == 0))
+                if (((x > 0) && COLOR_EQUAL(pixels[z*cubicmap.width + (x - 1)], COLOR_BLACK)) || (x == 0))
                 {
                     // Define left triangles (2 tris, 6 vertex) --> v1 v7 v2, v1 v6 v7
                     // NOTE: Collateral occluded faces are not generated
@@ -3439,7 +3463,7 @@ Mesh GenMeshCubicmap(Image cubicmap, Vector3 cubeSize)
                 }
             }
             // We check pixel color to be BLACK, we will only draw floor and roof
-            else if (COLOR_EQUAL(pixels[z*cubicmap.width + x], BLACK))
+            else if (COLOR_EQUAL(pixels[z*cubicmap.width + x], COLOR_BLACK))
             {
                 // Define top triangles (2 tris, 6 vertex --> v1-v2-v3, v1-v3-v4)
                 mapVertices[vCounter] = v1;
@@ -3716,7 +3740,7 @@ void DrawModelEx(Model model, Vector3 position, Vector3 rotationAxis, float rota
     {
         Color color = model.materials[model.meshMaterial[i]].maps[MATERIAL_MAP_DIFFUSE].color;
 
-        Color colorTint = WHITE;
+        Color colorTint = COLOR_WHITE;
         colorTint.r = (unsigned char)(((int)color.r*(int)tint.r)/255);
         colorTint.g = (unsigned char)(((int)color.g*(int)tint.g)/255);
         colorTint.b = (unsigned char)(((int)color.b*(int)tint.b)/255);
@@ -4188,7 +4212,7 @@ static void BuildPoseFromParentJoints(BoneInfo *bones, int boneCount, Transform 
 //  - A mesh is created for every material present in the obj file
 //  - the model.meshCount is therefore the materialCount returned from tinyobj
 //  - the mesh is automatically triangulated by tinyobj
-static Model LoadOBJ(const char *fileName)
+static Model LoadOBJ(const char* fileText, const char* fileName, bool dontUnload)
 {
     tinyobj_attrib_t objAttributes = { 0 };
     tinyobj_shape_t* objShapes = NULL;
@@ -4200,7 +4224,7 @@ static Model LoadOBJ(const char *fileName)
     Model model = { 0 };
     model.transform = MatrixIdentity();
 
-    char* fileText = LoadFileText(fileName);
+    
 
     if (fileText == NULL)
     {
@@ -4227,7 +4251,7 @@ static Model LoadOBJ(const char *fileName)
         return model;
     }
 
-    UnloadFileText(fileText);
+    if (!dontUnload) UnloadFileText(fileText);
 
     unsigned int faceVertIndex = 0;
     unsigned int nextShape = 1;
@@ -4428,7 +4452,7 @@ static Model LoadOBJ(const char *fileName)
 
 #if defined(SUPPORT_FILEFORMAT_IQM)
 // Load IQM mesh data
-static Model LoadIQM(const char *fileName)
+static Model LoadIQM(const char *fileData, int dataSize, const char *fileName, bool dontUnload)
 {
     #define IQM_MAGIC     "INTERQUAKEMODEL" // IQM file magic number
     #define IQM_VERSION          2          // only IQM version 2 supported
@@ -4437,8 +4461,8 @@ static Model LoadIQM(const char *fileName)
     #define MESH_NAME_LENGTH    32          // Mesh name string length
     #define MATERIAL_NAME_LENGTH 32         // Material name string length
 
-    int dataSize = 0;
-    unsigned char *fileData = LoadFileData(fileName, &dataSize);
+    
+    
     unsigned char *fileDataPtr = fileData;
 
     // IQM file structs
@@ -4798,7 +4822,7 @@ static Model LoadIQM(const char *fileName)
         }
     }
 
-    UnloadFileData(fileData);
+    if (!dontUnload) UnloadFileData(fileData);
 
     RL_FREE(imesh);
     RL_FREE(tri);
@@ -4815,13 +4839,21 @@ static Model LoadIQM(const char *fileName)
 }
 
 // Load IQM animation data
-static ModelAnimation *LoadModelAnimationsIQM(const char *fileName, int *animCount)
+static ModelAnimation *LoadModelAnimationsIQM(const char* fileName, int *animCount)
 {
     #define IQM_MAGIC       "INTERQUAKEMODEL"   // IQM file magic number
     #define IQM_VERSION     2                   // only IQM version 2 supported
 
-    int dataSize = 0;
-    unsigned char *fileData = LoadFileData(fileName, &dataSize);
+	int dataSize = 0;
+	const char* fileData = LoadFileData(fileName, &dataSize);
+
+    if (fileData == NULL)
+    {
+        TRACELOG(LOG_WARNING, "MODEL: [%s] IQM file could not be loaded", fileName);
+        *animCount = 0;
+        return NULL;
+	}
+    
     unsigned char *fileDataPtr = fileData;
 
     typedef struct IQMHeader {
@@ -5172,7 +5204,7 @@ static BoneInfo *LoadBoneInfoGLTF(cgltf_skin skin, int *boneCount)
 }
 
 // Load glTF file into model struct, .gltf and .glb supported
-static Model LoadGLTF(const char *fileName)
+static Model LoadGLTF(const char *fileData, int dataSize, const char *fileName, bool dontUnload)
 {
     /*********************************************************************************************
 
@@ -5225,8 +5257,8 @@ static Model LoadGLTF(const char *fileName)
     Model model = { 0 };
 
     // glTF file loading
-    int dataSize = 0;
-    unsigned char *fileData = LoadFileData(fileName, &dataSize);
+    
+    
 
     if (fileData == NULL) return model;
 
@@ -5903,7 +5935,7 @@ static Model LoadGLTF(const char *fileName)
     else TRACELOG(LOG_WARNING, "MODEL: [%s] Failed to load glTF data", fileName);
 
     // WARNING: cgltf requires the file pointer available while reading data
-    UnloadFileData(fileData);
+    if (!dontUnload) UnloadFileData(fileData);
 
     return model;
 }
@@ -6045,11 +6077,19 @@ static bool GetPoseAtTimeGLTF(cgltf_interpolation_type interpolationType, cgltf_
 
 #define GLTF_ANIMDELAY 17    // Animation frames delay, (~1000 ms/60 FPS = 16.666666* ms)
 
-static ModelAnimation *LoadModelAnimationsGLTF(const char *fileName, int *animCount)
+static ModelAnimation *LoadModelAnimationsGLTF(const char* fileName, int *animCount)
 {
     // glTF file loading
+    
     int dataSize = 0;
-    unsigned char *fileData = LoadFileData(fileName, &dataSize);
+    const char* fileData = LoadFileData(fileName, &dataSize);
+
+    if (fileData == NULL)
+    {
+        TRACELOG(LOG_WARNING, "MODEL: [%s] GLTF file could not be loaded", fileName);
+        *animCount = 0;
+        return NULL;
+    }
 
     ModelAnimation *animations = NULL;
 
@@ -6222,7 +6262,7 @@ static ModelAnimation *LoadModelAnimationsGLTF(const char *fileName, int *animCo
 
 #if defined(SUPPORT_FILEFORMAT_VOX)
 // Load VOX (MagicaVoxel) mesh data
-static Model LoadVOX(const char *fileName)
+static Model LoadVOX(const char *fileData, int dataSize, const char *fileName, bool dontUnload)
 {
     Model model = { 0 };
 
@@ -6230,8 +6270,8 @@ static Model LoadVOX(const char *fileName)
     int meshescount = 0;
 
     // Read vox file into buffer
-    int dataSize = 0;
-    unsigned char *fileData = LoadFileData(fileName, &dataSize);
+    
+    
 
     if (fileData == 0)
     {
@@ -6246,7 +6286,7 @@ static Model LoadVOX(const char *fileName)
     if (ret != VOX_SUCCESS)
     {
         // Error
-        UnloadFileData(fileData);
+        if (!dontUnload) UnloadFileData(fileData);
 
         TRACELOG(LOG_WARNING, "MODEL: [%s] Failed to load VOX data", fileName);
         return model;
@@ -6324,7 +6364,7 @@ static Model LoadVOX(const char *fileName)
 
     // Free buffers
     Vox_FreeArrays(&voxarray);
-    UnloadFileData(fileData);
+    if (!dontUnload) UnloadFileData(fileData);
 
     return model;
 }
@@ -6336,7 +6376,7 @@ unsigned char *m3d_loaderhook(char *fn, unsigned int *len) { return LoadFileData
 void m3d_freehook(void *data) { UnloadFileData((unsigned char *)data); }
 
 // Load M3D mesh data
-static Model LoadM3D(const char *fileName)
+static Model LoadM3D(const char *fileData, int dataSize, const char *fileName, bool dontUnload)
 {
     Model model = { 0 };
 
@@ -6344,8 +6384,8 @@ static Model LoadM3D(const char *fileName)
     m3dp_t *prop = NULL;
     int i, j, k, l, n, mi = -2, vcolor = 0;
 
-    int dataSize = 0;
-    unsigned char *fileData = LoadFileData(fileName, &dataSize);
+    
+    
 
     if (fileData != NULL)
     {
@@ -6355,7 +6395,7 @@ static Model LoadM3D(const char *fileName)
         {
             TRACELOG(LOG_WARNING, "MODEL: [%s] Failed to load M3D data, error code %d", fileName, m3d? m3d->errcode : -2);
             if (m3d) m3d_free(m3d);
-            UnloadFileData(fileData);
+            if (!dontUnload) UnloadFileData(fileData);
             return model;
         }
         else TRACELOG(LOG_INFO, "MODEL: [%s] M3D data loaded successfully: %i faces/%i materials", fileName, m3d->numface, m3d->nummaterial);
@@ -6364,7 +6404,7 @@ static Model LoadM3D(const char *fileName)
         if (!m3d->numface)
         {
             m3d_free(m3d);
-            UnloadFileData(fileData);
+            if (!dontUnload) UnloadFileData(fileData);
             return model;
         }
 
@@ -6577,7 +6617,7 @@ static Model LoadM3D(const char *fileName)
                     } break;
                     case m3dp_Ps:
                     {
-                        model.materials[i + 1].maps[MATERIAL_MAP_NORMAL].color = WHITE;
+                        model.materials[i + 1].maps[MATERIAL_MAP_NORMAL].color = COLOR_WHITE;
                         model.materials[i + 1].maps[MATERIAL_MAP_NORMAL].value = prop->value.fnum;
                     } break;
                     default:
@@ -6674,7 +6714,7 @@ static Model LoadM3D(const char *fileName)
         }
 
         m3d_free(m3d);
-        UnloadFileData(fileData);
+        if (!dontUnload) UnloadFileData(fileData);
     }
 
     return model;
@@ -6683,7 +6723,7 @@ static Model LoadM3D(const char *fileName)
 #define M3D_ANIMDELAY 17    // Animation frames delay, (~1000 ms/60 FPS = 16.666666* ms)
 
 // Load M3D animation data
-static ModelAnimation *LoadModelAnimationsM3D(const char *fileName, int *animCount)
+static ModelAnimation *LoadModelAnimationsM3D(const char* fileName, int *animCount)
 {
     ModelAnimation *animations = NULL;
 
@@ -6692,7 +6732,15 @@ static ModelAnimation *LoadModelAnimationsM3D(const char *fileName, int *animCou
     *animCount = 0;
 
     int dataSize = 0;
-    unsigned char *fileData = LoadFileData(fileName, &dataSize);
+    const char* fileData = LoadFileData(fileName, &dataSize);
+
+    if (fileData == NULL)
+    {
+        TRACELOG(LOG_WARNING, "MODEL: [%s] M3D file could not be loaded", fileName);
+        *animCount = 0;
+        return NULL;
+    }
+    
 
     if (fileData != NULL)
     {

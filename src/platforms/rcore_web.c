@@ -107,7 +107,7 @@ Vector2 lockedMousePos = { 0 };
 //----------------------------------------------------------------------------------
 // Module Internal Functions Declaration
 //----------------------------------------------------------------------------------
-int InitPlatform(void);          // Initialize platform (graphics, inputs and more)
+int InitPlatform(bool headless);          // Initialize platform (graphics, inputs and more)
 void ClosePlatform(void);        // Close platform
 
 // Error callback event
@@ -806,7 +806,7 @@ const char *GetClipboardText(void)
 }
 
 // Show mouse cursor
-void ShowCursor(void)
+void ShowCursor2(void)
 {
     if (CORE.Input.Mouse.cursorHidden)
     {
@@ -1076,7 +1076,7 @@ void PollInputEvents(void)
 //----------------------------------------------------------------------------------
 
 // Initialize platform: graphics, inputs and more
-int InitPlatform(void)
+int InitPlatform(bool headless)
 {
     glfwSetErrorCallback(ErrorCallback);
 

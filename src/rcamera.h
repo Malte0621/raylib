@@ -465,8 +465,8 @@ void UpdateCamera(Camera *camera, int mode)
         if (IsKeyDown(KEY_UP)) CameraPitch(camera, cameraRotationSpeed, lockView, rotateAroundTarget, rotateUp);
         if (IsKeyDown(KEY_RIGHT)) CameraYaw(camera, -cameraRotationSpeed, rotateAroundTarget);
         if (IsKeyDown(KEY_LEFT)) CameraYaw(camera, cameraRotationSpeed, rotateAroundTarget);
-        if (IsKeyDown(KEY_Q)) CameraRoll(camera, -cameraRotationSpeed);
-        if (IsKeyDown(KEY_E)) CameraRoll(camera, cameraRotationSpeed);
+        //if (IsKeyDown(KEY_Q)) CameraRoll(camera, -cameraRotationSpeed);
+        //if (IsKeyDown(KEY_E)) CameraRoll(camera, cameraRotationSpeed);
 
         // Camera movement
         // Camera pan (for CAMERA_FREE)
@@ -508,6 +508,14 @@ void UpdateCamera(Camera *camera, int mode)
         {
             if (IsKeyDown(KEY_SPACE)) CameraMoveUp(camera, cameraMoveSpeed);
             if (IsKeyDown(KEY_LEFT_CONTROL)) CameraMoveUp(camera, -cameraMoveSpeed);
+
+            if (IsKeyDown(KEY_Q)) CameraMoveUp(camera, -cameraMoveSpeed);
+            if (IsKeyDown(KEY_E)) CameraMoveUp(camera, cameraMoveSpeed);
+
+            if (IsGamepadAvailable(0)) {
+                if (GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_TRIGGER) >= 0.25f) CameraMoveUp(camera, -cameraMoveSpeed);
+                if (GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_TRIGGER) >= 0.25f) CameraMoveUp(camera, cameraMoveSpeed);
+            }
         }
     }
 

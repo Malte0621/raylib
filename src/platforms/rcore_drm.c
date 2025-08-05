@@ -217,7 +217,7 @@ static const short linuxToRaylibMap[KEYMAP_SIZE] = {
 //----------------------------------------------------------------------------------
 // Module Internal Functions Declaration
 //----------------------------------------------------------------------------------
-int InitPlatform(void);          // Initialize platform (graphics, inputs and more)
+int InitPlatform(bool headless);          // Initialize platform (graphics, inputs and more)
 void ClosePlatform(void);        // Close platform
 
 #if defined(SUPPORT_SSH_KEYBOARD_RPI)
@@ -510,7 +510,7 @@ const char *GetClipboardText(void)
 }
 
 // Show mouse cursor
-void ShowCursor(void)
+void ShowCursor2(void)
 {
     CORE.Input.Mouse.cursorHidden = false;
 }
@@ -707,7 +707,7 @@ void PollInputEvents(void)
 //----------------------------------------------------------------------------------
 
 // Initialize platform: graphics, inputs and more
-int InitPlatform(void)
+int InitPlatform(bool headless)
 {
     platform.fd = -1;
     platform.connector = NULL;

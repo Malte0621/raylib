@@ -425,7 +425,7 @@ void* SDL_GetClipboardData(const char *mime_type, size_t *size) {
 //----------------------------------------------------------------------------------
 // Module Internal Functions Declaration
 //----------------------------------------------------------------------------------
-int InitPlatform(void);                                      // Initialize platform (graphics, inputs and more)
+int InitPlatform(bool headless);                                      // Initialize platform (graphics, inputs and more)
 void ClosePlatform(void);                                    // Close platform
 
 static KeyboardKey ConvertScancodeToKey(SDL_Scancode sdlScancode);  // Help convert SDL scancodes to raylib key
@@ -1148,7 +1148,7 @@ Image GetClipboardImage(void)
 
 
 // Show mouse cursor
-void ShowCursor(void)
+void ShowCursor2(void)
 {
 #ifdef PLATFORM_DESKTOP_SDL3
     SDL_ShowCursor();
@@ -1771,7 +1771,7 @@ void PollInputEvents(void)
 //----------------------------------------------------------------------------------
 
 // Initialize platform: graphics, inputs and more
-int InitPlatform(void)
+int InitPlatform(bool headless)
 {
     // Initialize SDL internal global state, only required systems
     // NOTE: Not all systems need to be initialized, SDL_INIT_AUDIO is not required, managed by miniaudio
@@ -1857,45 +1857,47 @@ int InitPlatform(void)
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
     }
 
-    // Init window
+    if (!headless) {
+        // Init window
 #ifdef PLATFORM_DESKTOP_SDL3
-    platform.window = SDL_CreateWindow(CORE.Window.title, CORE.Window.screen.width, CORE.Window.screen.height, flags);
+        platform.window = SDL_CreateWindow(CORE.Window.title, CORE.Window.screen.width, CORE.Window.screen.height, flags);
 #else
-    platform.window = SDL_CreateWindow(CORE.Window.title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, CORE.Window.screen.width, CORE.Window.screen.height, flags);
+        platform.window = SDL_CreateWindow(CORE.Window.title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, CORE.Window.screen.width, CORE.Window.screen.height, flags);
 #endif
 
-    // Init OpenGL context
-    platform.glContext = SDL_GL_CreateContext(platform.window);
+        // Init OpenGL context
+        platform.glContext = SDL_GL_CreateContext(platform.window);
 
-    // Check window and glContext have been initialized successfully
-    if ((platform.window != NULL) && (platform.glContext != NULL))
-    {
-        CORE.Window.ready = true;
+        // Check window and glContext have been initialized successfully
+        if ((platform.window != NULL) && (platform.glContext != NULL))
+        {
+            CORE.Window.ready = true;
 
-        SDL_DisplayMode displayMode = { 0 };
-        SDL_GetCurrentDisplayMode(GetCurrentMonitor(), &displayMode);
+            SDL_DisplayMode displayMode = { 0 };
+            SDL_GetCurrentDisplayMode(GetCurrentMonitor(), &displayMode);
 
-        CORE.Window.display.width = displayMode.w;
-        CORE.Window.display.height = displayMode.h;
+            CORE.Window.display.width = displayMode.w;
+            CORE.Window.display.height = displayMode.h;
 
-        CORE.Window.render.width = CORE.Window.screen.width;
-        CORE.Window.render.height = CORE.Window.screen.height;
-        CORE.Window.currentFbo.width = CORE.Window.render.width;
-        CORE.Window.currentFbo.height = CORE.Window.render.height;
+            CORE.Window.render.width = CORE.Window.screen.width;
+            CORE.Window.render.height = CORE.Window.screen.height;
+            CORE.Window.currentFbo.width = CORE.Window.render.width;
+            CORE.Window.currentFbo.height = CORE.Window.render.height;
 
-        TRACELOG(LOG_INFO, "DISPLAY: Device initialized successfully");
-        TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
-        TRACELOG(LOG_INFO, "    > Screen size:  %i x %i", CORE.Window.screen.width, CORE.Window.screen.height);
-        TRACELOG(LOG_INFO, "    > Render size:  %i x %i", CORE.Window.render.width, CORE.Window.render.height);
-        TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
+            TRACELOG(LOG_INFO, "DISPLAY: Device initialized successfully");
+            TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
+            TRACELOG(LOG_INFO, "    > Screen size:  %i x %i", CORE.Window.screen.width, CORE.Window.screen.height);
+            TRACELOG(LOG_INFO, "    > Render size:  %i x %i", CORE.Window.render.width, CORE.Window.render.height);
+            TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
 
-        if (CORE.Window.flags & FLAG_VSYNC_HINT) SDL_GL_SetSwapInterval(1);
-        else SDL_GL_SetSwapInterval(0);
-    }
-    else
-    {
-        TRACELOG(LOG_FATAL, "PLATFORM: Failed to initialize graphics device");
-        return -1;
+            if (CORE.Window.flags & FLAG_VSYNC_HINT) SDL_GL_SetSwapInterval(1);
+            else SDL_GL_SetSwapInterval(0);
+        }
+        else
+        {
+            TRACELOG(LOG_FATAL, "PLATFORM: Failed to initialize graphics device");
+            return -1;
+        }
     }
 
     // Load OpenGL extensions

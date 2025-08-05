@@ -485,7 +485,7 @@ extern void LoadFontDefault(void);      // [Module: text] Loads default font on 
 extern void UnloadFontDefault(void);    // [Module: text] Unloads default font from GPU memory
 #endif
 
-extern int InitPlatform(void);          // Initialize platform (graphics, inputs and more)
+extern int InitPlatform(bool headless);          // Initialize platform (graphics, inputs and more)
 extern void ClosePlatform(void);        // Close platform
 
 static void InitTimer(void);                                // Initialize timer, hi-resolution if available (required by InitPlatform())
@@ -595,7 +595,7 @@ const char *TextFormat(const char *text, ...);              // Formatting of tex
 //void SetClipboardText(const char *text)
 //const char *GetClipboardText(void)
 
-//void ShowCursor(void)
+//void ShowCursor2(void)
 //void HideCursor(void)
 //void EnableCursor(void)
 //void DisableCursor(void)
@@ -668,12 +668,12 @@ void InitWindow(int width, int height, const char *title)
 
     // Initialize platform
     //--------------------------------------------------------------
-    InitPlatform();
+    InitPlatform(false);
     //--------------------------------------------------------------
 
     // Initialize rlgl default data (buffers and shaders)
     // NOTE: CORE.Window.currentFbo.width and CORE.Window.currentFbo.height not used, just stored as globals in rlgl
-    rlglInit(CORE.Window.currentFbo.width, CORE.Window.currentFbo.height);
+    rlglInit(CORE.Window.currentFbo.width, CORE.Window.currentFbo.height, false);
     isGpuReady = true; // Flag to note GPU has been initialized successfully
 
     // Setup default viewport
@@ -718,8 +718,44 @@ void InitWindow(int width, int height, const char *title)
     TRACELOG(LOG_INFO, "SYSTEM: Working Directory: %s", GetWorkingDirectory());
 }
 
+void InitHeadlessWindow(int width, int height) {
+    CORE.Window.screen.width = width;
+    CORE.Window.screen.height = height;
+    CORE.Window.eventWaiting = false;
+    CORE.Window.screenScale = MatrixIdentity();     // No draw scaling required by default
+
+    // Initialize global input state
+    memset(&CORE.Input, 0, sizeof(CORE.Input));     // Reset CORE.Input structure to 0
+    CORE.Input.Keyboard.exitKey = KEY_ESCAPE;
+    CORE.Input.Mouse.scale = CLITERAL(Vector2) { 1.0f, 1.0f };
+    CORE.Input.Mouse.cursor = MOUSE_CURSOR_ARROW;
+    CORE.Input.Gamepad.lastButtonPressed = GAMEPAD_BUTTON_UNKNOWN;
+
+    // Initialize platform
+    //--------------------------------------------------------------
+    InitPlatform(true);
+    //--------------------------------------------------------------
+
+    // Initialize rlgl default data (buffers and shaders)
+    // NOTE: CORE.Window.currentFbo.width and CORE.Window.currentFbo.height not used, just stored as globals in rlgl
+    rlglInit(CORE.Window.currentFbo.width, CORE.Window.currentFbo.height, true);
+
+    // Setup default viewport
+    SetupViewport(CORE.Window.currentFbo.width, CORE.Window.currentFbo.height);
+
+    SetWindowPosition(-10000, -10000);
+
+    CORE.Time.frameCounter = 0;
+    CORE.Window.shouldClose = false;
+
+    // Initialize random seed
+    SetRandomSeed((unsigned int)time(NULL));
+
+    rlSetHeadlessRenderViewport(CORE.Window.screen.width, CORE.Window.screen.height);
+}
+
 // Close window and unload OpenGL context
-void CloseWindow(void)
+void CloseWindow2(void)
 {
 #if defined(SUPPORT_GIF_RECORDING)
     if (gifRecording)
@@ -920,8 +956,8 @@ void EndDrawing(void)
         // Display the recording indicator every half-second
         if ((int)(GetTime()/0.5)%2 == 1)
         {
-            DrawCircle(30, CORE.Window.screen.height - 20, 10, MAROON);                 // WARNING: Module required: rshapes
-            DrawText("GIF RECORDING", 50, CORE.Window.screen.height - 25, 10, RED);     // WARNING: Module required: rtext
+            DrawCircle(30, CORE.Window.screen.height - 20, 10, COLOR_MAROON);                 // WARNING: Module required: rshapes
+            DrawText("GIF RECORDING", 50, CORE.Window.screen.height - 25, 10, COLOR_RED);     // WARNING: Module required: rtext
         }
     #endif
 
@@ -3506,7 +3542,7 @@ int GetTouchPointCount(void)
 //----------------------------------------------------------------------------------
 
 // NOTE: Functions with a platform-specific implementation on rcore_<platform>.c
-//int InitPlatform(void)
+//int InitPlatform(bool headless)
 //void ClosePlatform(void)
 
 // Initialize hi-resolution timer

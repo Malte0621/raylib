@@ -172,33 +172,33 @@
 
 // Some Basic Colors
 // NOTE: Custom raylib color palette for amazing visuals on WHITE background
-#define LIGHTGRAY  CLITERAL(Color){ 200, 200, 200, 255 }   // Light Gray
-#define GRAY       CLITERAL(Color){ 130, 130, 130, 255 }   // Gray
-#define DARKGRAY   CLITERAL(Color){ 80, 80, 80, 255 }      // Dark Gray
-#define YELLOW     CLITERAL(Color){ 253, 249, 0, 255 }     // Yellow
-#define GOLD       CLITERAL(Color){ 255, 203, 0, 255 }     // Gold
-#define ORANGE     CLITERAL(Color){ 255, 161, 0, 255 }     // Orange
-#define PINK       CLITERAL(Color){ 255, 109, 194, 255 }   // Pink
-#define RED        CLITERAL(Color){ 230, 41, 55, 255 }     // Red
-#define MAROON     CLITERAL(Color){ 190, 33, 55, 255 }     // Maroon
-#define GREEN      CLITERAL(Color){ 0, 228, 48, 255 }      // Green
-#define LIME       CLITERAL(Color){ 0, 158, 47, 255 }      // Lime
-#define DARKGREEN  CLITERAL(Color){ 0, 117, 44, 255 }      // Dark Green
-#define SKYBLUE    CLITERAL(Color){ 102, 191, 255, 255 }   // Sky Blue
-#define BLUE       CLITERAL(Color){ 0, 121, 241, 255 }     // Blue
-#define DARKBLUE   CLITERAL(Color){ 0, 82, 172, 255 }      // Dark Blue
-#define PURPLE     CLITERAL(Color){ 200, 122, 255, 255 }   // Purple
-#define VIOLET     CLITERAL(Color){ 135, 60, 190, 255 }    // Violet
-#define DARKPURPLE CLITERAL(Color){ 112, 31, 126, 255 }    // Dark Purple
-#define BEIGE      CLITERAL(Color){ 211, 176, 131, 255 }   // Beige
-#define BROWN      CLITERAL(Color){ 127, 106, 79, 255 }    // Brown
-#define DARKBROWN  CLITERAL(Color){ 76, 63, 47, 255 }      // Dark Brown
+#define COLOR_LIGHTGRAY  CLITERAL(Color){ 200, 200, 200, 255 }   // Light Gray
+#define COLOR_GRAY       CLITERAL(Color){ 130, 130, 130, 255 }   // Gray
+#define COLOR_DARKGRAY   CLITERAL(Color){ 80, 80, 80, 255 }      // Dark Gray
+#define COLOR_YELLOW     CLITERAL(Color){ 253, 249, 0, 255 }     // Yellow
+#define COLOR_GOLD       CLITERAL(Color){ 255, 203, 0, 255 }     // Gold
+#define COLOR_ORANGE     CLITERAL(Color){ 255, 161, 0, 255 }     // Orange
+#define COLOR_PINK       CLITERAL(Color){ 255, 109, 194, 255 }   // Pink
+#define COLOR_RED        CLITERAL(Color){ 230, 41, 55, 255 }     // Red
+#define COLOR_MAROON     CLITERAL(Color){ 190, 33, 55, 255 }     // Maroon
+#define COLOR_GREEN      CLITERAL(Color){ 0, 228, 48, 255 }      // Green
+#define COLOR_LIME       CLITERAL(Color){ 0, 158, 47, 255 }      // Lime
+#define COLOR_DARKGREEN  CLITERAL(Color){ 0, 117, 44, 255 }      // Dark Green
+#define COLOR_SKYBLUE    CLITERAL(Color){ 102, 191, 255, 255 }   // Sky Blue
+#define COLOR_BLUE       CLITERAL(Color){ 0, 121, 241, 255 }     // Blue
+#define COLOR_DARKBLUE   CLITERAL(Color){ 0, 82, 172, 255 }      // Dark Blue
+#define COLOR_PURPLE     CLITERAL(Color){ 200, 122, 255, 255 }   // Purple
+#define COLOR_VIOLET     CLITERAL(Color){ 135, 60, 190, 255 }    // Violet
+#define COLOR_DARKPURPLE CLITERAL(Color){ 112, 31, 126, 255 }    // Dark Purple
+#define COLOR_BEIGE      CLITERAL(Color){ 211, 176, 131, 255 }   // Beige
+#define COLOR_BROWN      CLITERAL(Color){ 127, 106, 79, 255 }    // Brown
+#define COLOR_DARKBROWN  CLITERAL(Color){ 76, 63, 47, 255 }      // Dark Brown
 
-#define WHITE      CLITERAL(Color){ 255, 255, 255, 255 }   // White
-#define BLACK      CLITERAL(Color){ 0, 0, 0, 255 }         // Black
-#define BLANK      CLITERAL(Color){ 0, 0, 0, 0 }           // Blank (Transparent)
-#define MAGENTA    CLITERAL(Color){ 255, 0, 255, 255 }     // Magenta
-#define RAYWHITE   CLITERAL(Color){ 245, 245, 245, 255 }   // My own White (raylib logo)
+#define COLOR_WHITE      CLITERAL(Color){ 255, 255, 255, 255 }   // White
+#define COLOR_BLACK      CLITERAL(Color){ 0, 0, 0, 255 }         // Black
+#define COLOR_BLANK      CLITERAL(Color){ 0, 0, 0, 0 }           // Blank (Transparent)
+#define COLOR_MAGENTA    CLITERAL(Color){ 255, 0, 255, 255 }     // Magenta
+#define COLOR_RAYWHITE   CLITERAL(Color){ 245, 245, 245, 255 }   // My own White (raylib logo)
 
 //----------------------------------------------------------------------------------
 // Structures Definition
@@ -966,7 +966,8 @@ extern "C" {            // Prevents name mangling of functions
 
 // Window-related functions
 RLAPI void InitWindow(int width, int height, const char *title);  // Initialize window and OpenGL context
-RLAPI void CloseWindow(void);                                     // Close window and unload OpenGL context
+RLAPI void InitHeadlessWindow(int width, int height);             // Initialize window and OpenGL context
+RLAPI void CloseWindow2(void);                                     // Close window and unload OpenGL context
 RLAPI bool WindowShouldClose(void);                               // Check if application should close (KEY_ESCAPE pressed or windows close icon clicked)
 RLAPI bool IsWindowReady(void);                                   // Check if window has been initialized successfully
 RLAPI bool IsWindowFullscreen(void);                              // Check if window is currently fullscreen
@@ -1016,7 +1017,7 @@ RLAPI void EnableEventWaiting(void);                              // Enable wait
 RLAPI void DisableEventWaiting(void);                             // Disable waiting for events on EndDrawing(), automatic events polling
 
 // Cursor-related functions
-RLAPI void ShowCursor(void);                                      // Shows cursor
+RLAPI void ShowCursor2(void);                                      // Shows cursor
 RLAPI void HideCursor(void);                                      // Hides cursor
 RLAPI bool IsCursorHidden(void);                                  // Check if cursor is not visible
 RLAPI void EnableCursor(void);                                    // Enables cursor (unlock cursor)
@@ -1451,6 +1452,8 @@ RLAPI Color GetColor(unsigned int hexValue);                                // G
 RLAPI Color GetPixelColor(void *srcPtr, int format);                        // Get Color from a source pixel pointer of certain format
 RLAPI void SetPixelColor(void *dstPtr, Color color, int format);            // Set color formatted into destination pixel pointer
 RLAPI int GetPixelDataSize(int width, int height, int format);              // Get pixel data size in bytes for certain format
+RLAPI void rlSetHeadlessRenderViewport(int width, int height);			// Set viewport for headless rendering
+RLAPI void rlUnsetHeadlessRenderViewport(); 							 // Unset viewport for headless rendering
 
 //------------------------------------------------------------------------------------
 // Font Loading and Text Drawing Functions (Module: text)
@@ -1550,6 +1553,7 @@ RLAPI void DrawGrid(int slices, float spacing);                                 
 //------------------------------------------------------------------------------------
 
 // Model management functions
+RLAPI Model LoadModelFromMemory(const char* fileData, int dataSize, const char* fileName, bool dontUnload); // Load model from memory buffers (meshes and materials)
 RLAPI Model LoadModel(const char *fileName);                                                // Load model from files (meshes and materials)
 RLAPI Model LoadModelFromMesh(Mesh mesh);                                                   // Load model from generated mesh (default material)
 RLAPI bool IsModelValid(Model model);                                                       // Check if a model is valid (loaded in GPU, VAO/VBOs)
@@ -1621,7 +1625,7 @@ RLAPI RayCollision GetRayCollisionQuad(Ray ray, Vector3 p1, Vector3 p2, Vector3 
 //------------------------------------------------------------------------------------
 // Audio Loading and Playing Functions (Module: audio)
 //------------------------------------------------------------------------------------
-typedef void (*AudioCallback)(void *bufferData, unsigned int frames);
+typedef void (*AudioCallback)(void *bufferData, unsigned int frames, Music* music, Sound* sound);
 
 // Audio device management functions
 RLAPI void InitAudioDevice(void);                                     // Initialize audio device and context
@@ -1695,7 +1699,7 @@ RLAPI void SetAudioStreamPan(AudioStream stream, float pan);          // Set pan
 RLAPI void SetAudioStreamBufferSizeDefault(int size);                 // Default size for new audio streams
 RLAPI void SetAudioStreamCallback(AudioStream stream, AudioCallback callback); // Audio thread callback to request new data
 
-RLAPI void AttachAudioStreamProcessor(AudioStream stream, AudioCallback processor); // Attach audio stream processor to stream, receives the samples as 'float'
+RLAPI void AttachAudioStreamProcessor(AudioStream stream, AudioCallback process, Music* music, Sound* sound); // Attach audio stream processor to stream, receives the samples as 'float'
 RLAPI void DetachAudioStreamProcessor(AudioStream stream, AudioCallback processor); // Detach audio stream processor from stream
 
 RLAPI void AttachAudioMixedProcessor(AudioCallback processor); // Attach audio stream processor to the entire audio pipeline, receives the samples as 'float'
