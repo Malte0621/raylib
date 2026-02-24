@@ -133,157 +133,157 @@ return {
       description = ""
     },
     {
-      name = "LIGHTGRAY",
+      name = "COLOR_LIGHTGRAY",
       type = "COLOR",
       value = "CLITERAL(Color){ 200, 200, 200, 255 }",
       description = "Light Gray"
     },
     {
-      name = "GRAY",
+      name = "COLOR_GRAY",
       type = "COLOR",
       value = "CLITERAL(Color){ 130, 130, 130, 255 }",
       description = "Gray"
     },
     {
-      name = "DARKGRAY",
+      name = "COLOR_DARKGRAY",
       type = "COLOR",
       value = "CLITERAL(Color){ 80, 80, 80, 255 }",
       description = "Dark Gray"
     },
     {
-      name = "YELLOW",
+      name = "COLOR_YELLOW",
       type = "COLOR",
       value = "CLITERAL(Color){ 253, 249, 0, 255 }",
       description = "Yellow"
     },
     {
-      name = "GOLD",
+      name = "COLOR_GOLD",
       type = "COLOR",
       value = "CLITERAL(Color){ 255, 203, 0, 255 }",
       description = "Gold"
     },
     {
-      name = "ORANGE",
+      name = "COLOR_ORANGE",
       type = "COLOR",
       value = "CLITERAL(Color){ 255, 161, 0, 255 }",
       description = "Orange"
     },
     {
-      name = "PINK",
+      name = "COLOR_PINK",
       type = "COLOR",
       value = "CLITERAL(Color){ 255, 109, 194, 255 }",
       description = "Pink"
     },
     {
-      name = "RED",
+      name = "COLOR_RED",
       type = "COLOR",
       value = "CLITERAL(Color){ 230, 41, 55, 255 }",
       description = "Red"
     },
     {
-      name = "MAROON",
+      name = "COLOR_MAROON",
       type = "COLOR",
       value = "CLITERAL(Color){ 190, 33, 55, 255 }",
       description = "Maroon"
     },
     {
-      name = "GREEN",
+      name = "COLOR_GREEN",
       type = "COLOR",
       value = "CLITERAL(Color){ 0, 228, 48, 255 }",
       description = "Green"
     },
     {
-      name = "LIME",
+      name = "COLOR_LIME",
       type = "COLOR",
       value = "CLITERAL(Color){ 0, 158, 47, 255 }",
       description = "Lime"
     },
     {
-      name = "DARKGREEN",
+      name = "COLOR_DARKGREEN",
       type = "COLOR",
       value = "CLITERAL(Color){ 0, 117, 44, 255 }",
       description = "Dark Green"
     },
     {
-      name = "SKYBLUE",
+      name = "COLOR_SKYBLUE",
       type = "COLOR",
       value = "CLITERAL(Color){ 102, 191, 255, 255 }",
       description = "Sky Blue"
     },
     {
-      name = "BLUE",
+      name = "COLOR_BLUE",
       type = "COLOR",
       value = "CLITERAL(Color){ 0, 121, 241, 255 }",
       description = "Blue"
     },
     {
-      name = "DARKBLUE",
+      name = "COLOR_DARKBLUE",
       type = "COLOR",
       value = "CLITERAL(Color){ 0, 82, 172, 255 }",
       description = "Dark Blue"
     },
     {
-      name = "PURPLE",
+      name = "COLOR_PURPLE",
       type = "COLOR",
       value = "CLITERAL(Color){ 200, 122, 255, 255 }",
       description = "Purple"
     },
     {
-      name = "VIOLET",
+      name = "COLOR_VIOLET",
       type = "COLOR",
       value = "CLITERAL(Color){ 135, 60, 190, 255 }",
       description = "Violet"
     },
     {
-      name = "DARKPURPLE",
+      name = "COLOR_DARKPURPLE",
       type = "COLOR",
       value = "CLITERAL(Color){ 112, 31, 126, 255 }",
       description = "Dark Purple"
     },
     {
-      name = "BEIGE",
+      name = "COLOR_BEIGE",
       type = "COLOR",
       value = "CLITERAL(Color){ 211, 176, 131, 255 }",
       description = "Beige"
     },
     {
-      name = "BROWN",
+      name = "COLOR_BROWN",
       type = "COLOR",
       value = "CLITERAL(Color){ 127, 106, 79, 255 }",
       description = "Brown"
     },
     {
-      name = "DARKBROWN",
+      name = "COLOR_DARKBROWN",
       type = "COLOR",
       value = "CLITERAL(Color){ 76, 63, 47, 255 }",
       description = "Dark Brown"
     },
     {
-      name = "WHITE",
+      name = "COLOR_WHITE",
       type = "COLOR",
       value = "CLITERAL(Color){ 255, 255, 255, 255 }",
       description = "White"
     },
     {
-      name = "BLACK",
+      name = "COLOR_BLACK",
       type = "COLOR",
       value = "CLITERAL(Color){ 0, 0, 0, 255 }",
       description = "Black"
     },
     {
-      name = "BLANK",
+      name = "COLOR_BLANK",
       type = "COLOR",
       value = "CLITERAL(Color){ 0, 0, 0, 0 }",
       description = "Blank (Transparent)"
     },
     {
-      name = "MAGENTA",
+      name = "COLOR_MAGENTA",
       type = "COLOR",
       value = "CLITERAL(Color){ 255, 0, 255, 255 }",
       description = "Magenta"
     },
     {
-      name = "RAYWHITE",
+      name = "COLOR_RAYWHITE",
       type = "COLOR",
       value = "CLITERAL(Color){ 245, 245, 245, 255 }",
       description = "My own White (raylib logo)"
@@ -3092,7 +3092,9 @@ return {
       returnType = "void",
       params = {
         {type = "void *", name = "bufferData"},
-        {type = "unsigned int", name = "frames"}
+        {type = "unsigned int", name = "frames"},
+        {type = "Music*", name = "music"},
+        {type = "Sound*", name = "sound"}
       }
     }
   },
@@ -3108,7 +3110,16 @@ return {
       }
     },
     {
-      name = "CloseWindow",
+      name = "InitHeadlessWindow",
+      description = "Initialize window and OpenGL context",
+      returnType = "void",
+      params = {
+        {type = "int", name = "width"},
+        {type = "int", name = "height"}
+      }
+    },
+    {
+      name = "CloseWindow2",
       description = "Close window and unload OpenGL context",
       returnType = "void"
     },
@@ -3413,7 +3424,7 @@ return {
       returnType = "void"
     },
     {
-      name = "ShowCursor",
+      name = "ShowCursor2",
       description = "Shows cursor",
       returnType = "void"
     },
@@ -6476,6 +6487,20 @@ return {
       }
     },
     {
+      name = "rlSetHeadlessRenderViewport",
+      description = "Set viewport for headless rendering",
+      returnType = "void",
+      params = {
+        {type = "int", name = "width"},
+        {type = "int", name = "height"}
+      }
+    },
+    {
+      name = "rlUnsetHeadlessRenderViewport",
+      description = "Unset viewport for headless rendering",
+      returnType = "void"
+    },
+    {
       name = "GetFontDefault",
       description = "Get the default Font",
       returnType = "Font"
@@ -7187,6 +7212,17 @@ return {
       }
     },
     {
+      name = "LoadModelFromMemory",
+      description = "Load model from memory buffers (meshes and materials)",
+      returnType = "Model",
+      params = {
+        {type = "const char*", name = "fileData"},
+        {type = "int", name = "dataSize"},
+        {type = "const char*", name = "fileName"},
+        {type = "bool", name = "dontUnload"}
+      }
+    },
+    {
       name = "LoadModel",
       description = "Load model from files (meshes and materials)",
       returnType = "Model",
@@ -7547,8 +7583,9 @@ return {
       description = "Load materials from model file",
       returnType = "Material *",
       params = {
-        {type = "const char *", name = "fileName"},
-        {type = "int *", name = "materialCount"}
+        {type = "const char*", name = "fileName"},
+        {type = "int", name = "dataSize"},
+        {type = "int*", name = "materialCount"}
       }
     },
     {
@@ -7597,8 +7634,9 @@ return {
       description = "Load model animations from file",
       returnType = "ModelAnimation *",
       params = {
-        {type = "const char *", name = "fileName"},
-        {type = "int *", name = "animCount"}
+        {type = "const char*", name = "fileName"},
+        {type = "int", name = "dataSize"},
+        {type = "int*", name = "animCount"}
       }
     },
     {
@@ -8247,7 +8285,9 @@ return {
       returnType = "void",
       params = {
         {type = "AudioStream", name = "stream"},
-        {type = "AudioCallback", name = "processor"}
+        {type = "AudioCallback", name = "process"},
+        {type = "Music*", name = "music"},
+        {type = "Sound*", name = "sound"}
       }
     },
     {

@@ -23,32 +23,32 @@
         <Define name="RL_VECTOR4_TYPE" type="GUARD" value="" desc="" />
         <Define name="RL_QUATERNION_TYPE" type="GUARD" value="" desc="" />
         <Define name="RL_MATRIX_TYPE" type="GUARD" value="" desc="" />
-        <Define name="LIGHTGRAY" type="COLOR" value="CLITERAL(Color){ 200, 200, 200, 255 }" desc="Light Gray" />
-        <Define name="GRAY" type="COLOR" value="CLITERAL(Color){ 130, 130, 130, 255 }" desc="Gray" />
-        <Define name="DARKGRAY" type="COLOR" value="CLITERAL(Color){ 80, 80, 80, 255 }" desc="Dark Gray" />
-        <Define name="YELLOW" type="COLOR" value="CLITERAL(Color){ 253, 249, 0, 255 }" desc="Yellow" />
-        <Define name="GOLD" type="COLOR" value="CLITERAL(Color){ 255, 203, 0, 255 }" desc="Gold" />
-        <Define name="ORANGE" type="COLOR" value="CLITERAL(Color){ 255, 161, 0, 255 }" desc="Orange" />
-        <Define name="PINK" type="COLOR" value="CLITERAL(Color){ 255, 109, 194, 255 }" desc="Pink" />
-        <Define name="RED" type="COLOR" value="CLITERAL(Color){ 230, 41, 55, 255 }" desc="Red" />
-        <Define name="MAROON" type="COLOR" value="CLITERAL(Color){ 190, 33, 55, 255 }" desc="Maroon" />
-        <Define name="GREEN" type="COLOR" value="CLITERAL(Color){ 0, 228, 48, 255 }" desc="Green" />
-        <Define name="LIME" type="COLOR" value="CLITERAL(Color){ 0, 158, 47, 255 }" desc="Lime" />
-        <Define name="DARKGREEN" type="COLOR" value="CLITERAL(Color){ 0, 117, 44, 255 }" desc="Dark Green" />
-        <Define name="SKYBLUE" type="COLOR" value="CLITERAL(Color){ 102, 191, 255, 255 }" desc="Sky Blue" />
-        <Define name="BLUE" type="COLOR" value="CLITERAL(Color){ 0, 121, 241, 255 }" desc="Blue" />
-        <Define name="DARKBLUE" type="COLOR" value="CLITERAL(Color){ 0, 82, 172, 255 }" desc="Dark Blue" />
-        <Define name="PURPLE" type="COLOR" value="CLITERAL(Color){ 200, 122, 255, 255 }" desc="Purple" />
-        <Define name="VIOLET" type="COLOR" value="CLITERAL(Color){ 135, 60, 190, 255 }" desc="Violet" />
-        <Define name="DARKPURPLE" type="COLOR" value="CLITERAL(Color){ 112, 31, 126, 255 }" desc="Dark Purple" />
-        <Define name="BEIGE" type="COLOR" value="CLITERAL(Color){ 211, 176, 131, 255 }" desc="Beige" />
-        <Define name="BROWN" type="COLOR" value="CLITERAL(Color){ 127, 106, 79, 255 }" desc="Brown" />
-        <Define name="DARKBROWN" type="COLOR" value="CLITERAL(Color){ 76, 63, 47, 255 }" desc="Dark Brown" />
-        <Define name="WHITE" type="COLOR" value="CLITERAL(Color){ 255, 255, 255, 255 }" desc="White" />
-        <Define name="BLACK" type="COLOR" value="CLITERAL(Color){ 0, 0, 0, 255 }" desc="Black" />
-        <Define name="BLANK" type="COLOR" value="CLITERAL(Color){ 0, 0, 0, 0 }" desc="Blank (Transparent)" />
-        <Define name="MAGENTA" type="COLOR" value="CLITERAL(Color){ 255, 0, 255, 255 }" desc="Magenta" />
-        <Define name="RAYWHITE" type="COLOR" value="CLITERAL(Color){ 245, 245, 245, 255 }" desc="My own White (raylib logo)" />
+        <Define name="COLOR_LIGHTGRAY" type="COLOR" value="CLITERAL(Color){ 200, 200, 200, 255 }" desc="Light Gray" />
+        <Define name="COLOR_GRAY" type="COLOR" value="CLITERAL(Color){ 130, 130, 130, 255 }" desc="Gray" />
+        <Define name="COLOR_DARKGRAY" type="COLOR" value="CLITERAL(Color){ 80, 80, 80, 255 }" desc="Dark Gray" />
+        <Define name="COLOR_YELLOW" type="COLOR" value="CLITERAL(Color){ 253, 249, 0, 255 }" desc="Yellow" />
+        <Define name="COLOR_GOLD" type="COLOR" value="CLITERAL(Color){ 255, 203, 0, 255 }" desc="Gold" />
+        <Define name="COLOR_ORANGE" type="COLOR" value="CLITERAL(Color){ 255, 161, 0, 255 }" desc="Orange" />
+        <Define name="COLOR_PINK" type="COLOR" value="CLITERAL(Color){ 255, 109, 194, 255 }" desc="Pink" />
+        <Define name="COLOR_RED" type="COLOR" value="CLITERAL(Color){ 230, 41, 55, 255 }" desc="Red" />
+        <Define name="COLOR_MAROON" type="COLOR" value="CLITERAL(Color){ 190, 33, 55, 255 }" desc="Maroon" />
+        <Define name="COLOR_GREEN" type="COLOR" value="CLITERAL(Color){ 0, 228, 48, 255 }" desc="Green" />
+        <Define name="COLOR_LIME" type="COLOR" value="CLITERAL(Color){ 0, 158, 47, 255 }" desc="Lime" />
+        <Define name="COLOR_DARKGREEN" type="COLOR" value="CLITERAL(Color){ 0, 117, 44, 255 }" desc="Dark Green" />
+        <Define name="COLOR_SKYBLUE" type="COLOR" value="CLITERAL(Color){ 102, 191, 255, 255 }" desc="Sky Blue" />
+        <Define name="COLOR_BLUE" type="COLOR" value="CLITERAL(Color){ 0, 121, 241, 255 }" desc="Blue" />
+        <Define name="COLOR_DARKBLUE" type="COLOR" value="CLITERAL(Color){ 0, 82, 172, 255 }" desc="Dark Blue" />
+        <Define name="COLOR_PURPLE" type="COLOR" value="CLITERAL(Color){ 200, 122, 255, 255 }" desc="Purple" />
+        <Define name="COLOR_VIOLET" type="COLOR" value="CLITERAL(Color){ 135, 60, 190, 255 }" desc="Violet" />
+        <Define name="COLOR_DARKPURPLE" type="COLOR" value="CLITERAL(Color){ 112, 31, 126, 255 }" desc="Dark Purple" />
+        <Define name="COLOR_BEIGE" type="COLOR" value="CLITERAL(Color){ 211, 176, 131, 255 }" desc="Beige" />
+        <Define name="COLOR_BROWN" type="COLOR" value="CLITERAL(Color){ 127, 106, 79, 255 }" desc="Brown" />
+        <Define name="COLOR_DARKBROWN" type="COLOR" value="CLITERAL(Color){ 76, 63, 47, 255 }" desc="Dark Brown" />
+        <Define name="COLOR_WHITE" type="COLOR" value="CLITERAL(Color){ 255, 255, 255, 255 }" desc="White" />
+        <Define name="COLOR_BLACK" type="COLOR" value="CLITERAL(Color){ 0, 0, 0, 255 }" desc="Black" />
+        <Define name="COLOR_BLANK" type="COLOR" value="CLITERAL(Color){ 0, 0, 0, 0 }" desc="Blank (Transparent)" />
+        <Define name="COLOR_MAGENTA" type="COLOR" value="CLITERAL(Color){ 255, 0, 255, 255 }" desc="Magenta" />
+        <Define name="COLOR_RAYWHITE" type="COLOR" value="CLITERAL(Color){ 245, 245, 245, 255 }" desc="My own White (raylib logo)" />
         <Define name="RL_BOOL_TYPE" type="GUARD" value="" desc="" />
         <Define name="MOUSE_LEFT_BUTTON" type="UNKNOWN" value="MOUSE_BUTTON_LEFT" desc="" />
         <Define name="MOUSE_RIGHT_BUTTON" type="UNKNOWN" value="MOUSE_BUTTON_RIGHT" desc="" />
@@ -669,18 +669,24 @@
             <Param type="const char *" name="fileName" desc="" />
             <Param type="char *" name="text" desc="" />
         </Callback>
-        <Callback name="AudioCallback" retType="void" paramCount="2" desc="">
+        <Callback name="AudioCallback" retType="void" paramCount="4" desc="">
             <Param type="void *" name="bufferData" desc="" />
             <Param type="unsigned int" name="frames" desc="" />
+            <Param type="Music*" name="music" desc="" />
+            <Param type="Sound*" name="sound" desc="" />
         </Callback>
     </Callbacks>
-    <Functions count="581">
+    <Functions count="585">
         <Function name="InitWindow" retType="void" paramCount="3" desc="Initialize window and OpenGL context">
             <Param type="int" name="width" desc="" />
             <Param type="int" name="height" desc="" />
             <Param type="const char *" name="title" desc="" />
         </Function>
-        <Function name="CloseWindow" retType="void" paramCount="0" desc="Close window and unload OpenGL context">
+        <Function name="InitHeadlessWindow" retType="void" paramCount="2" desc="Initialize window and OpenGL context">
+            <Param type="int" name="width" desc="" />
+            <Param type="int" name="height" desc="" />
+        </Function>
+        <Function name="CloseWindow2" retType="void" paramCount="0" desc="Close window and unload OpenGL context">
         </Function>
         <Function name="WindowShouldClose" retType="bool" paramCount="0" desc="Check if application should close (KEY_ESCAPE pressed or windows close icon clicked)">
         </Function>
@@ -801,7 +807,7 @@
         </Function>
         <Function name="DisableEventWaiting" retType="void" paramCount="0" desc="Disable waiting for events on EndDrawing(), automatic events polling">
         </Function>
-        <Function name="ShowCursor" retType="void" paramCount="0" desc="Shows cursor">
+        <Function name="ShowCursor2" retType="void" paramCount="0" desc="Shows cursor">
         </Function>
         <Function name="HideCursor" retType="void" paramCount="0" desc="Hides cursor">
         </Function>
@@ -2258,6 +2264,12 @@
             <Param type="int" name="height" desc="" />
             <Param type="int" name="format" desc="" />
         </Function>
+        <Function name="rlSetHeadlessRenderViewport" retType="void" paramCount="2" desc="Set viewport for headless rendering">
+            <Param type="int" name="width" desc="" />
+            <Param type="int" name="height" desc="" />
+        </Function>
+        <Function name="rlUnsetHeadlessRenderViewport" retType="void" paramCount="0" desc="Unset viewport for headless rendering">
+        </Function>
         <Function name="GetFontDefault" retType="Font" paramCount="0" desc="Get the default Font">
         </Function>
         <Function name="LoadFont" retType="Font" paramCount="1" desc="Load font from file into GPU memory (VRAM)">
@@ -2616,6 +2628,12 @@
             <Param type="int" name="slices" desc="" />
             <Param type="float" name="spacing" desc="" />
         </Function>
+        <Function name="LoadModelFromMemory" retType="Model" paramCount="4" desc="Load model from memory buffers (meshes and materials)">
+            <Param type="const char*" name="fileData" desc="" />
+            <Param type="int" name="dataSize" desc="" />
+            <Param type="const char*" name="fileName" desc="" />
+            <Param type="bool" name="dontUnload" desc="" />
+        </Function>
         <Function name="LoadModel" retType="Model" paramCount="1" desc="Load model from files (meshes and materials)">
             <Param type="const char *" name="fileName" desc="" />
         </Function>
@@ -2797,9 +2815,10 @@
             <Param type="Image" name="cubicmap" desc="" />
             <Param type="Vector3" name="cubeSize" desc="" />
         </Function>
-        <Function name="LoadMaterials" retType="Material *" paramCount="2" desc="Load materials from model file">
-            <Param type="const char *" name="fileName" desc="" />
-            <Param type="int *" name="materialCount" desc="" />
+        <Function name="LoadMaterials" retType="Material *" paramCount="3" desc="Load materials from model file">
+            <Param type="const char*" name="fileName" desc="" />
+            <Param type="int" name="dataSize" desc="" />
+            <Param type="int*" name="materialCount" desc="" />
         </Function>
         <Function name="LoadMaterialDefault" retType="Material" paramCount="0" desc="Load default material (Supports: DIFFUSE, SPECULAR, NORMAL maps)">
         </Function>
@@ -2819,9 +2838,10 @@
             <Param type="int" name="meshId" desc="" />
             <Param type="int" name="materialId" desc="" />
         </Function>
-        <Function name="LoadModelAnimations" retType="ModelAnimation *" paramCount="2" desc="Load model animations from file">
-            <Param type="const char *" name="fileName" desc="" />
-            <Param type="int *" name="animCount" desc="" />
+        <Function name="LoadModelAnimations" retType="ModelAnimation *" paramCount="3" desc="Load model animations from file">
+            <Param type="const char*" name="fileName" desc="" />
+            <Param type="int" name="dataSize" desc="" />
+            <Param type="int*" name="animCount" desc="" />
         </Function>
         <Function name="UpdateModelAnimation" retType="void" paramCount="3" desc="Update model animation pose (CPU)">
             <Param type="Model" name="model" desc="" />
@@ -3096,9 +3116,11 @@
             <Param type="AudioStream" name="stream" desc="" />
             <Param type="AudioCallback" name="callback" desc="" />
         </Function>
-        <Function name="AttachAudioStreamProcessor" retType="void" paramCount="2" desc="Attach audio stream processor to stream, receives the samples as 'float'">
+        <Function name="AttachAudioStreamProcessor" retType="void" paramCount="4" desc="Attach audio stream processor to stream, receives the samples as 'float'">
             <Param type="AudioStream" name="stream" desc="" />
-            <Param type="AudioCallback" name="processor" desc="" />
+            <Param type="AudioCallback" name="process" desc="" />
+            <Param type="Music*" name="music" desc="" />
+            <Param type="Sound*" name="sound" desc="" />
         </Function>
         <Function name="DetachAudioStreamProcessor" retType="void" paramCount="2" desc="Detach audio stream processor from stream">
             <Param type="AudioStream" name="stream" desc="" />
