@@ -6,7 +6,7 @@ enum_option(PLATFORM "Desktop;Web;Android;Raspberry Pi;DRM;SDL" "Platform to bui
 
 enum_option(OPENGL_VERSION "OFF;4.3;3.3;2.1;1.1;ES 2.0;ES 3.0" "Force a specific OpenGL Version?")
 
-enum_option(GRAPHICS_BACKEND "Auto;OFF;DirectX12;DirectX11;DirectX10;DirectX9;Vulkan;Metal;Software" "Graphics backend selection. Auto picks the best API for your platform. (overrides OPENGL_VERSION)")
+enum_option(GRAPHICS_BACKEND "Auto;OFF;DirectX12;DirectX11;DirectX10;DirectX9;Vulkan;Metal;Software" "Graphics backend selection. OFF keeps the default OpenGL backend. Auto picks the best API for your platform. (overrides OPENGL_VERSION)")
 
 # Configuration options
 option(BUILD_EXAMPLES "Build the examples." ${RAYLIB_IS_MAIN})

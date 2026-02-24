@@ -1463,7 +1463,7 @@ void UploadMesh(Mesh *mesh, bool dynamic)
     mesh->vboId[RL_DEFAULT_SHADER_ATTRIB_LOCATION_BONEWEIGHTS] = 0;  // Vertex buffer: boneWeights
 #endif
 
-#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2)
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2) || defined(GRAPHICS_API_EXTERNAL_BACKEND)
     mesh->vaoId = rlLoadVertexArray();
     rlEnableVertexArray(mesh->vaoId);
 
@@ -1635,7 +1635,7 @@ void DrawMesh(Mesh mesh, Material material, Matrix transform)
     rlDisableTexture();
 #endif
 
-#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2)
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2) || defined(GRAPHICS_API_EXTERNAL_BACKEND)
     // Bind shader program
     rlEnableShader(material.shader.id);
 
@@ -1868,7 +1868,7 @@ void DrawMesh(Mesh mesh, Material material, Matrix transform)
 // Draw multiple mesh instances with material and different transforms
 void DrawMeshInstanced(Mesh mesh, Material material, const Matrix *transforms, int instances)
 {
-#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2)
+#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2) || defined(GRAPHICS_API_EXTERNAL_BACKEND)
     // Instancing required variables
     float16 *instanceTransforms = NULL;
     unsigned int instancesVboId = 0;

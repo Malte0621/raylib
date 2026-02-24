@@ -35,6 +35,7 @@
 
 #include <windows.h>
 #include <d3d11.h>
+#include <d3d11shader.h>
 #include <d3dcompiler.h>
 #include <dxgi.h>
 #include <stdlib.h>
@@ -45,6 +46,7 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "dxguid.lib")
 
 // rlgl.h is included by the translation unit that defines RLGL_IMPLEMENTATION
 // We reference types from it. Ensure defines are available.
@@ -107,6 +109,8 @@
 #define RL_D3D11_MAX_SHADERS      256
 #define RL_D3D11_MAX_BUFFERS      4096
 #define RL_D3D11_MAX_FRAMEBUFFERS 256
+#define RL_D3D11_MAX_CBUFFERS     16    // Max constant buffers per shader
+#define RL_D3D11_MAX_UNIFORM_VARS 64    // Max tracked uniform variables per shader
 
 //----------------------------------------------------------------------------------
 // Types - Resource tracking (maps unsigned int IDs to D3D11 objects)
@@ -122,12 +126,52 @@ typedef struct {
     ID3D11RenderTargetView *rtv;          // Only for render targets
 } rlD3D11Texture;
 
+// Per-constant-buffer info (tracked per shader via reflection)
+typedef struct {
+    int stage;               // 0 = VS, 1 = PS
+    int registerSlot;        // register(bN) slot
+    int byteSize;            // Total cbuffer size (16-byte aligned)
+    ID3D11Buffer *buffer;    // D3D11 GPU constant buffer
+    unsigned char *cpuData;  // CPU-side copy for partial updates
+} rlD3D11CBufferInfo;
+
+// Per-uniform variable info (tracked per shader via reflection)
+typedef struct {
+    char name[128];
+    int cbufferIndex;        // Index into shader's cbuffers[] array
+    int byteOffset;          // Offset within the constant buffer
+    int byteSize;            // Size of this variable in bytes
+} rlD3D11UniformVar;
+
+// Per-shader texture binding info (from reflection)
+typedef struct {
+    char name[128];
+    int registerSlot;        // register(tN) slot in HLSL
+} rlD3D11TextureBindingInfo;
+
+#define RL_D3D11_MAX_TEXTURE_BINDINGS 16
+#define RL_D3D11_TEX_LOC_OFFSET 10000   // rlGetLocationUniform returns 10000+idx for texture bindings
+#define RL_MAX_MATERIAL_MAPS 12          // Max material maps tracked for register mapping
+
 typedef struct {
     ID3D11VertexShader *vertexShader;
     ID3D11PixelShader *pixelShader;
     ID3D11InputLayout *inputLayout;
     ID3DBlob *vsBlob;
     ID3DBlob *psBlob;
+    // Constant buffer tracking (populated by shader reflection)
+    rlD3D11CBufferInfo cbuffers[RL_D3D11_MAX_CBUFFERS];
+    int cbufferCount;
+    // Uniform variable tracking (populated by shader reflection)
+    rlD3D11UniformVar uniforms[RL_D3D11_MAX_UNIFORM_VARS];
+    int uniformCount;
+    // Texture binding tracking (populated by shader reflection)
+    rlD3D11TextureBindingInfo textureBindings[RL_D3D11_MAX_TEXTURE_BINDINGS];
+    int textureBindingCount;
+    // Material-map-index → D3D11 register slot mapping
+    // Set via SetShaderValue(shader, texLoc, &materialMapIndex, INT)
+    // Default: identity (slot i → register i)
+    int texMaterialMapToRegister[RL_MAX_MATERIAL_MAPS];
 } rlD3D11Shader;
 
 typedef struct {
@@ -247,6 +291,12 @@ typedef struct rlglData {
     // Current active framebuffer (0 = default/backbuffer)
     unsigned int activeFramebuffer;
 
+    // Swap chain (default back buffer presentation)
+    IDXGISwapChain *swapChain;
+    ID3D11RenderTargetView *backbufferRTV;
+    ID3D11Texture2D *depthStencilTexture;
+    ID3D11DepthStencilView *depthStencilView;
+
     // Batch vertex/index buffers on GPU
     ID3D11Buffer *batchVertexBuffers[4];    // pos, texcoord, normal, color
     ID3D11Buffer *batchIndexBuffer;
@@ -269,6 +319,10 @@ static void rlLoadShaderDefault(void);
 static void rlUnloadShaderDefault(void);
 static void rlUpdateD3D11States(void);
 static DXGI_FORMAT rlGetDXGIFormat(int format);
+static void rlReflectShaderUniforms(unsigned int shaderIdx);
+
+// External: raylib provides this to get the native window handle (HWND)
+extern void *GetWindowHandle(void);
 
 //----------------------------------------------------------------------------------
 // Global state
@@ -276,6 +330,15 @@ static DXGI_FORMAT rlGetDXGIFormat(int format);
 static double rlCullDistanceNear = RL_CULL_DISTANCE_NEAR;
 static double rlCullDistanceFar = RL_CULL_DISTANCE_FAR;
 static rlglData RLGL = { 0 };
+
+// D3D11-specific rendering state (mesh path)
+static unsigned int d3d11_activeShaderId = 0;  // Shader currently bound on GPU (set by rlEnableShader, analogous to glUseProgram)
+static int d3d11_activeTextureSlot = 0;     // Current active texture slot for rlEnableTexture
+static unsigned int d3d11_pendingVBO = 0;   // Pending VBO ID for deferred binding (set by rlEnableVertexBuffer, consumed by rlSetVertexAttribute)
+
+// Default white vertex buffer for meshes without vertex colors
+static ID3D11Buffer *d3d11_defaultWhiteVBO = NULL;
+#define RL_D3D11_DEFAULT_WHITE_VBO_VERTS 65536  // 256KB total (4 bytes per vertex)
 
 //----------------------------------------------------------------------------------
 // Default HLSL Shaders (embedded as strings)
@@ -699,14 +762,35 @@ void rlSetTexture(unsigned int id)
     }
 }
 
-void rlActiveTextureSlot(int slot) { (void)slot; /* D3D11 handles slots via register bindings */ }
+void rlActiveTextureSlot(int slot) { d3d11_activeTextureSlot = slot; }
 void rlEnableTexture(unsigned int id) {
-    if (id > 0 && id <= RLGL.textureCount && RLGL.textures[id-1].srv && RLGL.context)
-        ID3D11DeviceContext_PSSetShaderResources(RLGL.context, 0, 1, &RLGL.textures[id-1].srv);
+    if (id > 0 && id <= RLGL.textureCount && RLGL.textures[id-1].srv && RLGL.context) {
+        // Determine the actual D3D11 register slot using per-shader mapping
+        // In OpenGL, the material map index = texture unit, and glUniform1i maps sampler → unit.
+        // In D3D11, we map material map index → HLSL register(tN) using texMaterialMapToRegister.
+        int targetSlot = d3d11_activeTextureSlot;  // Default: identity mapping
+        if (d3d11_activeShaderId > 0 && d3d11_activeShaderId <= RLGL.shaderCount) {
+            unsigned int shaderIdx = d3d11_activeShaderId - 1;
+            if (d3d11_activeTextureSlot >= 0 && d3d11_activeTextureSlot < RL_MAX_MATERIAL_MAPS) {
+                targetSlot = RLGL.shaders[shaderIdx].texMaterialMapToRegister[d3d11_activeTextureSlot];
+            }
+        }
+        ID3D11DeviceContext_PSSetShaderResources(RLGL.context, targetSlot, 1, &RLGL.textures[id-1].srv);
+        // Also set sampler for this slot
+        ID3D11SamplerState *sampler = RLGL.textures[id-1].sampler ? RLGL.textures[id-1].sampler : RLGL.defaultSampler;
+        ID3D11DeviceContext_PSSetSamplers(RLGL.context, targetSlot, 1, &sampler);
+    }
 }
 void rlDisableTexture(void) {
+    int targetSlot = d3d11_activeTextureSlot;
+    if (d3d11_activeShaderId > 0 && d3d11_activeShaderId <= RLGL.shaderCount) {
+        unsigned int shaderIdx = d3d11_activeShaderId - 1;
+        if (d3d11_activeTextureSlot >= 0 && d3d11_activeTextureSlot < RL_MAX_MATERIAL_MAPS) {
+            targetSlot = RLGL.shaders[shaderIdx].texMaterialMapToRegister[d3d11_activeTextureSlot];
+        }
+    }
     ID3D11ShaderResourceView *nullSRV = NULL;
-    if (RLGL.context) ID3D11DeviceContext_PSSetShaderResources(RLGL.context, 0, 1, &nullSRV);
+    if (RLGL.context) ID3D11DeviceContext_PSSetShaderResources(RLGL.context, targetSlot, 1, &nullSRV);
 }
 void rlEnableTextureCubemap(unsigned int id) { rlEnableTexture(id); }
 void rlDisableTextureCubemap(void) { rlDisableTexture(); }
@@ -718,13 +802,28 @@ void rlCubemapParameters(unsigned int id, int param, int value) { (void)id; (voi
 //----------------------------------------------------------------------------------
 void rlEnableShader(unsigned int id) {
     if (id > 0 && id <= RLGL.shaderCount && RLGL.context) {
+        d3d11_activeShaderId = id;  // Track which shader is actually bound (for rlSetUniform/rlEnableTexture lookups)
         ID3D11DeviceContext_VSSetShader(RLGL.context, RLGL.shaders[id-1].vertexShader, NULL, 0);
         ID3D11DeviceContext_PSSetShader(RLGL.context, RLGL.shaders[id-1].pixelShader, NULL, 0);
         if (RLGL.shaders[id-1].inputLayout)
             ID3D11DeviceContext_IASetInputLayout(RLGL.context, RLGL.shaders[id-1].inputLayout);
+
+        // Re-bind all constant buffers for this shader so that previously set uniform values
+        // (e.g. from SetShaderValue at init time) remain active even if another shader/batch
+        // rendering path has overwritten the cbuffer bindings in the meantime.
+        rlD3D11Shader *s = &RLGL.shaders[id-1];
+        for (int i = 0; i < s->cbufferCount; i++) {
+            if (s->cbuffers[i].buffer) {
+                if (s->cbuffers[i].stage == 0)
+                    ID3D11DeviceContext_VSSetConstantBuffers(RLGL.context, s->cbuffers[i].registerSlot, 1, &s->cbuffers[i].buffer);
+                else
+                    ID3D11DeviceContext_PSSetConstantBuffers(RLGL.context, s->cbuffers[i].registerSlot, 1, &s->cbuffers[i].buffer);
+            }
+        }
     }
 }
 void rlDisableShader(void) {
+    d3d11_activeShaderId = 0;
     if (RLGL.context) {
         ID3D11DeviceContext_VSSetShader(RLGL.context, NULL, NULL, 0);
         ID3D11DeviceContext_PSSetShader(RLGL.context, NULL, NULL, 0);
@@ -787,8 +886,25 @@ void rlClearColor(unsigned char r, unsigned char g, unsigned char b, unsigned ch
 }
 
 void rlClearScreenBuffers(void) {
-    // Clearing is handled by the platform layer which owns the RTV/DSV for the swap chain
-    // This function is called but the actual clear happens when the platform provides the RTV
+    if (!RLGL.context) return;
+
+    // Clear the active render target (backbuffer or FBO)
+    ID3D11RenderTargetView *rtv = RLGL.backbufferRTV;
+    ID3D11DepthStencilView *dsv = RLGL.depthStencilView;
+
+    // If an FBO is active, use its RTV/DSV instead
+    if (RLGL.activeFramebuffer > 0 && RLGL.activeFramebuffer <= RLGL.framebufferCount) {
+        rlD3D11Framebuffer *fb = &RLGL.framebuffers[RLGL.activeFramebuffer - 1];
+        if (fb->rtv[0]) rtv = fb->rtv[0];
+        if (fb->dsv) dsv = fb->dsv;
+    }
+
+    if (rtv) ID3D11DeviceContext_ClearRenderTargetView(RLGL.context, rtv, RLGL.State.clearColor);
+    if (dsv) ID3D11DeviceContext_ClearDepthStencilView(RLGL.context, dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+}
+
+void rlSwapScreenBuffer(void) {
+    if (RLGL.swapChain) IDXGISwapChain_Present(RLGL.swapChain, 0, 0);
 }
 
 void rlCheckErrors(void) { /* D3D11 debug layer handles errors via OutputDebugString */ }
@@ -841,6 +957,108 @@ void rlglInit(int width, int height, bool headless)
 
     TRACELOG(RL_LOG_INFO, "D3D11: Device created successfully (Feature Level: %X)", RLGL.featureLevel);
 
+    // Create swap chain using the native window handle
+    if (!headless)
+    {
+        HWND hwnd = (HWND)GetWindowHandle();
+        if (hwnd)
+        {
+            // Get DXGI factory from the device
+            IDXGIDevice *dxgiDevice = NULL;
+            IDXGIAdapter *dxgiAdapter = NULL;
+            IDXGIFactory *dxgiFactory = NULL;
+
+            hr = ID3D11Device_QueryInterface(RLGL.device, &IID_IDXGIDevice, (void **)&dxgiDevice);
+            if (SUCCEEDED(hr)) hr = IDXGIDevice_GetAdapter(dxgiDevice, &dxgiAdapter);
+            if (SUCCEEDED(hr)) hr = IDXGIAdapter_GetParent(dxgiAdapter, &IID_IDXGIFactory, (void **)&dxgiFactory);
+
+            if (SUCCEEDED(hr))
+            {
+                DXGI_SWAP_CHAIN_DESC scd = { 0 };
+                scd.BufferCount = 2;
+                scd.BufferDesc.Width = width;
+                scd.BufferDesc.Height = height;
+                scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                scd.BufferDesc.RefreshRate.Numerator = 0;
+                scd.BufferDesc.RefreshRate.Denominator = 1;
+                scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+                scd.OutputWindow = hwnd;
+                scd.SampleDesc.Count = 1;
+                scd.SampleDesc.Quality = 0;
+                scd.Windowed = TRUE;
+                scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+                hr = IDXGIFactory_CreateSwapChain(dxgiFactory, (IUnknown *)RLGL.device, &scd, &RLGL.swapChain);
+
+                if (SUCCEEDED(hr))
+                {
+                    TRACELOG(RL_LOG_INFO, "D3D11: Swap chain created successfully (%ix%i)", width, height);
+
+                    // Create render target view from back buffer
+                    ID3D11Texture2D *backBuffer = NULL;
+                    hr = IDXGISwapChain_GetBuffer(RLGL.swapChain, 0, &IID_ID3D11Texture2D, (void **)&backBuffer);
+                    if (SUCCEEDED(hr))
+                    {
+                        hr = ID3D11Device_CreateRenderTargetView(RLGL.device, (ID3D11Resource *)backBuffer, NULL, &RLGL.backbufferRTV);
+                        ID3D11Texture2D_Release(backBuffer);
+                    }
+
+                    // Create depth-stencil buffer
+                    D3D11_TEXTURE2D_DESC dtd = { 0 };
+                    dtd.Width = width;
+                    dtd.Height = height;
+                    dtd.MipLevels = 1;
+                    dtd.ArraySize = 1;
+                    dtd.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+                    dtd.SampleDesc.Count = 1;
+                    dtd.Usage = D3D11_USAGE_DEFAULT;
+                    dtd.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+
+                    hr = ID3D11Device_CreateTexture2D(RLGL.device, &dtd, NULL, &RLGL.depthStencilTexture);
+                    if (SUCCEEDED(hr))
+                    {
+                        hr = ID3D11Device_CreateDepthStencilView(RLGL.device, (ID3D11Resource *)RLGL.depthStencilTexture, NULL, &RLGL.depthStencilView);
+                    }
+
+                    // Bind render targets
+                    if (RLGL.backbufferRTV && RLGL.depthStencilView)
+                    {
+                        ID3D11DeviceContext_OMSetRenderTargets(RLGL.context, 1, &RLGL.backbufferRTV, RLGL.depthStencilView);
+                        TRACELOG(RL_LOG_INFO, "D3D11: Render target and depth-stencil created successfully");
+                    }
+                    else
+                    {
+                        TRACELOG(RL_LOG_ERROR, "D3D11: Failed to create render target or depth-stencil view");
+                    }
+
+                    // Set viewport
+                    D3D11_VIEWPORT vp = { 0 };
+                    vp.Width = (float)width;
+                    vp.Height = (float)height;
+                    vp.MinDepth = 0.0f;
+                    vp.MaxDepth = 1.0f;
+                    ID3D11DeviceContext_RSSetViewports(RLGL.context, 1, &vp);
+                }
+                else
+                {
+                    TRACELOG(RL_LOG_ERROR, "D3D11: Failed to create swap chain (HRESULT: 0x%08X)", hr);
+                }
+            }
+            else
+            {
+                TRACELOG(RL_LOG_ERROR, "D3D11: Failed to get DXGI factory from device");
+            }
+
+            if (dxgiFactory) IDXGIFactory_Release(dxgiFactory);
+            if (dxgiAdapter) IDXGIAdapter_Release(dxgiAdapter);
+            if (dxgiDevice) IDXGIDevice_Release(dxgiDevice);
+        }
+        else
+        {
+            TRACELOG(RL_LOG_WARNING, "D3D11: No window handle available, swap chain not created");
+        }
+    }
+
     // Create constant buffers
     RLGL.cbMatrix = rlCreateD3D11Buffer(NULL, sizeof(rlD3D11MatrixCB), D3D11_BIND_CONSTANT_BUFFER, true);
     RLGL.cbColor = rlCreateD3D11Buffer(NULL, sizeof(rlD3D11ColorCB), D3D11_BIND_CONSTANT_BUFFER, true);
@@ -864,6 +1082,18 @@ void rlglInit(int width, int height, bool headless)
         RLGL.State.defaultTextureId = rlLoadTexture(pixels, 1, 1, 7, 1); // 7 = R8G8B8A8
         if (RLGL.State.defaultTextureId != 0)
             TRACELOG(RL_LOG_INFO, "TEXTURE: [ID %i] Default texture loaded successfully", RLGL.State.defaultTextureId);
+    }
+
+    // Create default white vertex buffer for meshes without vertex colors
+    // This provides (255,255,255,255) = white for every vertex when bound as the COLOR attribute
+    {
+        unsigned char *whiteData = (unsigned char *)RL_MALLOC(RL_D3D11_DEFAULT_WHITE_VBO_VERTS * 4);
+        if (whiteData) {
+            memset(whiteData, 0xFF, RL_D3D11_DEFAULT_WHITE_VBO_VERTS * 4);
+            d3d11_defaultWhiteVBO = rlCreateD3D11Buffer(whiteData, RL_D3D11_DEFAULT_WHITE_VBO_VERTS * 4, D3D11_BIND_VERTEX_BUFFER, false);
+            RL_FREE(whiteData);
+            if (d3d11_defaultWhiteVBO) TRACELOG(RL_LOG_INFO, "BUFFER: Default white vertex buffer created (%d vertices)", RL_D3D11_DEFAULT_WHITE_VBO_VERTS);
+        }
     }
 
     // Init default shader
@@ -906,6 +1136,9 @@ void rlglClose(void)
 
     if (RLGL.State.defaultTextureId > 0) rlUnloadTexture(RLGL.State.defaultTextureId);
 
+    // Release default white vertex buffer
+    if (d3d11_defaultWhiteVBO) { ID3D11Buffer_Release(d3d11_defaultWhiteVBO); d3d11_defaultWhiteVBO = NULL; }
+
     // Release all tracked resources
     for (unsigned int i = 0; i < RLGL.textureCount; i++) {
         if (RLGL.textures[i].srv) ID3D11ShaderResourceView_Release(RLGL.textures[i].srv);
@@ -936,6 +1169,12 @@ void rlglClose(void)
         if (RLGL.batchVertexBuffers[i]) ID3D11Buffer_Release(RLGL.batchVertexBuffers[i]);
     }
     if (RLGL.batchIndexBuffer) ID3D11Buffer_Release(RLGL.batchIndexBuffer);
+
+    // Release swap chain resources
+    if (RLGL.depthStencilView) { ID3D11DepthStencilView_Release(RLGL.depthStencilView); RLGL.depthStencilView = NULL; }
+    if (RLGL.depthStencilTexture) { ID3D11Texture2D_Release(RLGL.depthStencilTexture); RLGL.depthStencilTexture = NULL; }
+    if (RLGL.backbufferRTV) { ID3D11RenderTargetView_Release(RLGL.backbufferRTV); RLGL.backbufferRTV = NULL; }
+    if (RLGL.swapChain) { IDXGISwapChain_Release(RLGL.swapChain); RLGL.swapChain = NULL; }
 
     if (RLGL.context) { ID3D11DeviceContext_Release(RLGL.context); RLGL.context = NULL; }
     if (RLGL.device) { ID3D11Device_Release(RLGL.device); RLGL.device = NULL; }
@@ -1321,9 +1560,34 @@ unsigned int rlLoadTextureDepth(int width, int height, bool useRenderBuffer)
 unsigned int rlLoadTextureCubemap(const void *data, int size, int format, int mipmapCount)
 {
     if (!RLGL.device || RLGL.textureCount >= RL_D3D11_MAX_TEXTURES) return 0;
+    if (mipmapCount < 1) mipmapCount = 1;
+    if (mipmapCount > 16) mipmapCount = 16;
 
     unsigned int idx = RLGL.textureCount;
     DXGI_FORMAT dxgiFormat = rlGetDXGIFormat(format);
+
+    // Source bytes per pixel (how data arrives from raylib)
+    int srcBpp = 4;
+    switch (format) {
+        case 1: srcBpp = 1; break;   // GRAYSCALE
+        case 2: srcBpp = 2; break;   // GRAY_ALPHA
+        case 3: srcBpp = 2; break;   // R5G6B5
+        case 4: srcBpp = 3; break;   // R8G8B8 (3 bytes, will expand to 4)
+        case 5: srcBpp = 2; break;   // R5G5B5A1
+        case 6: srcBpp = 2; break;   // R4G4B4A4
+        case 7: srcBpp = 4; break;   // R8G8B8A8
+        case 8: srcBpp = 4; break;   // R32
+        case 9: srcBpp = 12; break;  // R32G32B32
+        case 10: srcBpp = 16; break; // R32G32B32A32
+        case 11: srcBpp = 2; break;  // R16
+        case 12: srcBpp = 6; break;  // R16G16B16 (6 bytes, will expand to 8)
+        case 13: srcBpp = 8; break;  // R16G16B16A16
+        default: srcBpp = 4; break;
+    }
+    // D3D11 dest bytes per pixel (after any expansion)
+    int dstBpp = srcBpp;
+    if (format == 4) dstBpp = 4;   // R8G8B8 -> R8G8B8A8
+    if (format == 12) dstBpp = 8;  // R16G16B16 -> R16G16B16A16
 
     D3D11_TEXTURE2D_DESC desc = { 0 };
     desc.Width = size;
@@ -1336,8 +1600,74 @@ unsigned int rlLoadTextureCubemap(const void *data, int size, int format, int mi
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
 
-    HRESULT hr = ID3D11Device_CreateTexture2D(RLGL.device, &desc, NULL, &RLGL.textures[idx].texture);
-    if (FAILED(hr)) return 0;
+    // Prepare per-face subresource data
+    // D3D11 subresource index for texture arrays: subresource = mipSlice + arraySlice * mipLevels
+    int maxSubs = 6 * mipmapCount;
+    D3D11_SUBRESOURCE_DATA initData[6 * 16];
+    void *expandedBuffers[6 * 16]; // Track expanded allocations for cleanup
+    for (int i = 0; i < maxSubs; i++) expandedBuffers[i] = NULL;
+
+    bool hasData = (data != NULL);
+    if (hasData) {
+        const unsigned char *srcPtr = (const unsigned char *)data;
+        int mipSize = size;
+        for (int mip = 0; mip < mipmapCount; mip++) {
+            int srcFaceBytes = mipSize * mipSize * srcBpp;
+
+            for (int face = 0; face < 6; face++) {
+                int subIdx = face * mipmapCount + mip;
+
+                if (format == 4) {
+                    // R8G8B8 -> R8G8B8A8 expansion
+                    int pixelCount = mipSize * mipSize;
+                    unsigned char *expanded = (unsigned char *)RL_MALLOC(pixelCount * 4);
+                    for (int p = 0; p < pixelCount; p++) {
+                        expanded[p*4 + 0] = srcPtr[p*3 + 0];
+                        expanded[p*4 + 1] = srcPtr[p*3 + 1];
+                        expanded[p*4 + 2] = srcPtr[p*3 + 2];
+                        expanded[p*4 + 3] = 255;
+                    }
+                    initData[subIdx].pSysMem = expanded;
+                    initData[subIdx].SysMemPitch = mipSize * 4;
+                    initData[subIdx].SysMemSlicePitch = 0;
+                    expandedBuffers[subIdx] = expanded;
+                } else if (format == 12) {
+                    // R16G16B16 -> R16G16B16A16 expansion
+                    int pixelCount = mipSize * mipSize;
+                    unsigned char *expanded = (unsigned char *)RL_MALLOC(pixelCount * 8);
+                    const unsigned short *src16 = (const unsigned short *)srcPtr;
+                    unsigned short *dst16 = (unsigned short *)expanded;
+                    for (int p = 0; p < pixelCount; p++) {
+                        dst16[p*4 + 0] = src16[p*3 + 0];
+                        dst16[p*4 + 1] = src16[p*3 + 1];
+                        dst16[p*4 + 2] = src16[p*3 + 2];
+                        dst16[p*4 + 3] = 0x3C00; // 1.0 in half float
+                    }
+                    initData[subIdx].pSysMem = expanded;
+                    initData[subIdx].SysMemPitch = mipSize * 8;
+                    initData[subIdx].SysMemSlicePitch = 0;
+                    expandedBuffers[subIdx] = expanded;
+                } else {
+                    initData[subIdx].pSysMem = srcPtr;
+                    initData[subIdx].SysMemPitch = (unsigned int)(mipSize * dstBpp);
+                    initData[subIdx].SysMemSlicePitch = 0;
+                }
+                srcPtr += srcFaceBytes;
+            }
+            mipSize /= 2;
+            if (mipSize < 1) mipSize = 1;
+        }
+    }
+
+    HRESULT hr = ID3D11Device_CreateTexture2D(RLGL.device, &desc, hasData ? initData : NULL, &RLGL.textures[idx].texture);
+
+    // Free all expanded buffers (safe to call after CreateTexture2D has copied the data)
+    for (int i = 0; i < maxSubs; i++) { if (expandedBuffers[i]) RL_FREE(expandedBuffers[i]); }
+
+    if (FAILED(hr)) {
+        TRACELOG(RL_LOG_WARNING, "TEXTURE: Failed to create cubemap texture (HRESULT: 0x%08X)", hr);
+        return 0;
+    }
 
     D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = { 0 };
     srvDesc.Format = dxgiFormat;
@@ -1350,6 +1680,7 @@ unsigned int rlLoadTextureCubemap(const void *data, int size, int format, int mi
     RLGL.textures[idx].isCubemap = true;
     RLGL.textureCount++;
 
+    TRACELOG(RL_LOG_INFO, "TEXTURE: [ID %i] Cubemap texture loaded successfully (%ix%i, %d faces)", idx + 1, size, size, 6);
     return idx + 1;
 }
 
@@ -1539,7 +1870,7 @@ void rlUnloadFramebuffer(unsigned int id) {
 //----------------------------------------------------------------------------------
 unsigned int rlLoadVertexArray(void) { return 1; } // VAO concept mapped simply
 void rlUnloadVertexArray(unsigned int vaoId) { (void)vaoId; }
-bool rlEnableVertexArray(unsigned int vaoId) { (void)vaoId; return true; }
+bool rlEnableVertexArray(unsigned int vaoId) { (void)vaoId; return false; } // Return false to force per-VBO binding path in DrawMesh
 void rlDisableVertexArray(void) { }
 
 unsigned int rlLoadVertexBuffer(const void *buffer, int size, bool dynamic) {
@@ -1592,12 +1923,11 @@ void rlUnloadVertexBuffer(unsigned int vboId) {
 }
 
 void rlEnableVertexBuffer(unsigned int id) {
-    if (id == 0 || id > RLGL.bufferCount || !RLGL.context) return;
-    unsigned int idx = id - 1;
-    UINT stride = 0, offset = 0;
-    ID3D11DeviceContext_IASetVertexBuffers(RLGL.context, 0, 1, &RLGL.buffers[idx].buffer, &stride, &offset);
+    // Defer actual binding — rlSetVertexAttribute will do the IASetVertexBuffers call
+    // with the correct input slot and stride
+    d3d11_pendingVBO = id;
 }
-void rlDisableVertexBuffer(void) { }
+void rlDisableVertexBuffer(void) { d3d11_pendingVBO = 0; }
 void rlEnableVertexBufferElement(unsigned int id) {
     if (id == 0 || id > RLGL.bufferCount || !RLGL.context) return;
     unsigned int idx = id - 1;
@@ -1607,15 +1937,33 @@ void rlDisableVertexBufferElement(void) { }
 void rlEnableVertexAttribute(unsigned int index) { (void)index; }
 void rlDisableVertexAttribute(unsigned int index) { (void)index; }
 void rlSetVertexAttribute(unsigned int index, int compSize, int type, bool normalized, int stride, int offset) {
-    (void)index; (void)compSize; (void)type; (void)normalized; (void)stride; (void)offset;
+    (void)normalized;
+    // In D3D11, input layout handles the format. Here we perform the deferred
+    // IASetVertexBuffers call using the pending VBO and the known attribute info.
+    if (d3d11_pendingVBO > 0 && d3d11_pendingVBO <= RLGL.bufferCount && RLGL.context) {
+        unsigned int bufIdx = d3d11_pendingVBO - 1;
+        int elemSize = (type == RL_UNSIGNED_BYTE) ? 1 : (int)sizeof(float);
+        UINT actualStride = (stride > 0) ? (UINT)stride : (UINT)(compSize * elemSize);
+        UINT bufOffset = (UINT)offset;
+        ID3D11DeviceContext_IASetVertexBuffers(RLGL.context, index, 1, &RLGL.buffers[bufIdx].buffer, &actualStride, &bufOffset);
+        d3d11_pendingVBO = 0;
+    }
 }
 void rlSetVertexAttributeDivisor(unsigned int index, int divisor) { (void)index; (void)divisor; }
 void rlSetVertexAttributeDefault(int locIndex, const void *value, int attribType, int count) {
-    (void)locIndex; (void)value; (void)attribType; (void)count;
+    // In OpenGL, glVertexAttrib4f sets a constant default attribute value when the attribute array is disabled.
+    // In D3D11, there's no equivalent. Instead, we bind a default white vertex buffer to provide (1,1,1,1) data.
+    // This is primarily used for the COLOR attribute (locIndex=3) when meshes don't have vertex colors.
+    (void)value; (void)attribType; (void)count;
+    if (locIndex < 0 || !RLGL.context || !d3d11_defaultWhiteVBO) return;
+    UINT stride = 4;  // R8G8B8A8_UNORM = 4 bytes per vertex
+    UINT offset = 0;
+    ID3D11DeviceContext_IASetVertexBuffers(RLGL.context, locIndex, 1, &d3d11_defaultWhiteVBO, &stride, &offset);
 }
 
 void rlDrawVertexArray(int offset, int count) {
     if (!RLGL.context) return;
+    if (RLGL.stateDirty) rlUpdateD3D11States();  // Apply pending state changes (depth, cull, blend)
     ID3D11DeviceContext_IASetPrimitiveTopology(RLGL.context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_Draw(RLGL.context, count, offset);
 }
@@ -1623,6 +1971,7 @@ void rlDrawVertexArray(int offset, int count) {
 void rlDrawVertexArrayElements(int offset, int count, const void *buffer) {
     (void)buffer;
     if (!RLGL.context) return;
+    if (RLGL.stateDirty) rlUpdateD3D11States();  // Apply pending state changes (depth, cull, blend)
     ID3D11DeviceContext_IASetPrimitiveTopology(RLGL.context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_DrawIndexed(RLGL.context, count, offset, 0);
 }
@@ -1630,6 +1979,7 @@ void rlDrawVertexArrayElements(int offset, int count, const void *buffer) {
 void rlDrawVertexArrayInstanced(int offset, int count, int instances) {
     (void)offset;
     if (!RLGL.context) return;
+    if (RLGL.stateDirty) rlUpdateD3D11States();  // Apply pending state changes (depth, cull, blend)
     ID3D11DeviceContext_IASetPrimitiveTopology(RLGL.context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_DrawInstanced(RLGL.context, count, instances, 0, 0);
 }
@@ -1637,6 +1987,7 @@ void rlDrawVertexArrayInstanced(int offset, int count, int instances) {
 void rlDrawVertexArrayElementsInstanced(int offset, int count, const void *buffer, int instances) {
     (void)buffer;
     if (!RLGL.context) return;
+    if (RLGL.stateDirty) rlUpdateD3D11States();  // Apply pending state changes (depth, cull, blend)
     ID3D11DeviceContext_IASetPrimitiveTopology(RLGL.context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_DrawIndexedInstanced(RLGL.context, count, instances, offset, 0, 0);
 }
@@ -1732,10 +2083,15 @@ unsigned int rlLoadShaderCode(const char *vsCode, const char *fsCode)
 
     RLGL.shaders[idx].vsBlob = vsBlob;
     RLGL.shaders[idx].psBlob = psBlob;
+    RLGL.shaders[idx].cbufferCount = 0;
+    RLGL.shaders[idx].uniformCount = 0;
     RLGL.shaderCount++;
 
+    // Reflect shader to discover constant buffers and uniform variables
+    rlReflectShaderUniforms(idx);
+
     unsigned int id = idx + 1;
-    TRACELOG(RL_LOG_INFO, "SHADER: [ID %i] D3D11 shader loaded successfully", id);
+    TRACELOG(RL_LOG_INFO, "SHADER: [ID %i] D3D11 shader loaded successfully (uniforms: %d, cbuffers: %d)", id, RLGL.shaders[idx].uniformCount, RLGL.shaders[idx].cbufferCount);
     return id;
 }
 
@@ -1752,25 +2108,168 @@ void rlUnloadShaderProgram(unsigned int id) {
     if (RLGL.shaders[idx].inputLayout) { ID3D11InputLayout_Release(RLGL.shaders[idx].inputLayout); RLGL.shaders[idx].inputLayout = NULL; }
     if (RLGL.shaders[idx].vsBlob) { ID3D10Blob_Release(RLGL.shaders[idx].vsBlob); RLGL.shaders[idx].vsBlob = NULL; }
     if (RLGL.shaders[idx].psBlob) { ID3D10Blob_Release(RLGL.shaders[idx].psBlob); RLGL.shaders[idx].psBlob = NULL; }
+    // Clean up constant buffers and CPU data
+    for (int i = 0; i < RLGL.shaders[idx].cbufferCount; i++) {
+        if (RLGL.shaders[idx].cbuffers[i].buffer) { ID3D11Buffer_Release(RLGL.shaders[idx].cbuffers[i].buffer); RLGL.shaders[idx].cbuffers[i].buffer = NULL; }
+        if (RLGL.shaders[idx].cbuffers[i].cpuData) { RL_FREE(RLGL.shaders[idx].cbuffers[i].cpuData); RLGL.shaders[idx].cbuffers[i].cpuData = NULL; }
+    }
+    RLGL.shaders[idx].cbufferCount = 0;
+    RLGL.shaders[idx].uniformCount = 0;
 }
 
 int rlGetLocationUniform(unsigned int shaderId, const char *uniformName) {
-    (void)shaderId; (void)uniformName;
-    return -1; // D3D11 uses constant buffers, not individual uniform locations
+    if (shaderId == 0 || shaderId > RLGL.shaderCount || !uniformName) return -1;
+    unsigned int idx = shaderId - 1;
+    // First check cbuffer uniforms
+    for (int i = 0; i < RLGL.shaders[idx].uniformCount; i++) {
+        if (strcmp(RLGL.shaders[idx].uniforms[i].name, uniformName) == 0)
+            return i;
+    }
+    // Then check texture/SRV bindings (return special encoded value)
+    for (int i = 0; i < RLGL.shaders[idx].textureBindingCount; i++) {
+        if (strcmp(RLGL.shaders[idx].textureBindings[i].name, uniformName) == 0)
+            return RL_D3D11_TEX_LOC_OFFSET + i;
+    }
+    return -1; // Not found (may be unused by this shader)
 }
 
 int rlGetLocationAttrib(unsigned int shaderId, const char *attribName) {
-    (void)shaderId; (void)attribName;
+    (void)shaderId;
+    if (!attribName) return -1;
+    // Map known raylib attribute names to D3D11 input layout slot indices
+    if (strcmp(attribName, "vertexPosition") == 0) return 0;
+    if (strcmp(attribName, "vertexTexCoord") == 0) return 1;
+    if (strcmp(attribName, "vertexNormal") == 0) return 2;
+    if (strcmp(attribName, "vertexColor") == 0) return 3;
+    if (strcmp(attribName, "vertexTangent") == 0) return -1;      // Not in our 4-slot input layout
+    if (strcmp(attribName, "vertexTexCoord2") == 0) return -1;    // Not in our 4-slot input layout
     return -1;
 }
 
 void rlSetUniform(int locIndex, const void *value, int uniformType, int count) {
-    (void)locIndex; (void)value; (void)uniformType; (void)count;
+    if (locIndex < 0 || !value || !RLGL.context) return;
+    if (d3d11_activeShaderId == 0 || d3d11_activeShaderId > RLGL.shaderCount) return;
+    unsigned int shaderIdx = d3d11_activeShaderId - 1;
+    rlD3D11Shader *s = &RLGL.shaders[shaderIdx];
+
+    // Handle texture binding locations (locIndex >= RL_D3D11_TEX_LOC_OFFSET)
+    // In OpenGL, SetShaderValue(shader, texLoc, &mapIndex, INT) sets which texture unit the sampler reads from.
+    // In D3D11, we store the material-map-index → register mapping so rlEnableTexture can bind to the right slot.
+    if (locIndex >= RL_D3D11_TEX_LOC_OFFSET) {
+        if (uniformType != RL_SHADER_UNIFORM_INT) return;
+        int texBindIdx = locIndex - RL_D3D11_TEX_LOC_OFFSET;
+        if (texBindIdx < 0 || texBindIdx >= s->textureBindingCount) return;
+        int registerSlot = s->textureBindings[texBindIdx].registerSlot;
+        int materialMapIndex = *(const int *)value;
+        if (materialMapIndex >= 0 && materialMapIndex < RL_MAX_MATERIAL_MAPS) {
+            s->texMaterialMapToRegister[materialMapIndex] = registerSlot;
+            TRACELOG(RL_LOG_DEBUG, "SHADER: [ID %i] Texture '%s' mapped: material map %d -> register(t%d)",
+                     (int)d3d11_activeShaderId, s->textureBindings[texBindIdx].name, materialMapIndex, registerSlot);
+        }
+        return;
+    }
+
+    if (locIndex >= s->uniformCount) return;
+
+    rlD3D11UniformVar *u = &s->uniforms[locIndex];
+    rlD3D11CBufferInfo *cb = &s->cbuffers[u->cbufferIndex];
+
+    // Compute data size based on uniform type
+    int dataSize = 0;
+    switch (uniformType) {
+        case RL_SHADER_UNIFORM_FLOAT:    dataSize = sizeof(float) * count; break;
+        case RL_SHADER_UNIFORM_VEC2:     dataSize = 2 * sizeof(float) * count; break;
+        case RL_SHADER_UNIFORM_VEC3:     dataSize = 3 * sizeof(float) * count; break;
+        case RL_SHADER_UNIFORM_VEC4:     dataSize = 4 * sizeof(float) * count; break;
+        case RL_SHADER_UNIFORM_INT:      dataSize = sizeof(int) * count; break;
+        case RL_SHADER_UNIFORM_IVEC2:    dataSize = 2 * sizeof(int) * count; break;
+        case RL_SHADER_UNIFORM_IVEC3:    dataSize = 3 * sizeof(int) * count; break;
+        case RL_SHADER_UNIFORM_IVEC4:    dataSize = 4 * sizeof(int) * count; break;
+        case RL_SHADER_UNIFORM_UINT:     dataSize = sizeof(unsigned int) * count; break;
+        case RL_SHADER_UNIFORM_SAMPLER2D: return; // Textures handled separately in D3D11
+        default: return;
+    }
+    if (dataSize > u->byteSize) dataSize = u->byteSize; // Clamp to variable size
+
+    // Update CPU-side copy
+    if (cb->cpuData) memcpy(cb->cpuData + u->byteOffset, value, dataSize);
+
+    // Upload entire cbuffer to GPU and bind
+    if (cb->buffer) {
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        if (SUCCEEDED(ID3D11DeviceContext_Map(RLGL.context, (ID3D11Resource *)cb->buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+            memcpy(mapped.pData, cb->cpuData, cb->byteSize);
+            ID3D11DeviceContext_Unmap(RLGL.context, (ID3D11Resource *)cb->buffer, 0);
+        }
+        if (cb->stage == 0) ID3D11DeviceContext_VSSetConstantBuffers(RLGL.context, cb->registerSlot, 1, &cb->buffer);
+        else                ID3D11DeviceContext_PSSetConstantBuffers(RLGL.context, cb->registerSlot, 1, &cb->buffer);
+    }
 }
 
-void rlSetUniformMatrix(int locIndex, Matrix mat) { (void)locIndex; (void)mat; }
-void rlSetUniformMatrices(int locIndex, const Matrix *mat, int count) { (void)locIndex; (void)mat; (void)count; }
-void rlSetUniformSampler(int locIndex, unsigned int textureId) { (void)locIndex; (void)textureId; }
+void rlSetUniformMatrix(int locIndex, Matrix mat) {
+    if (locIndex < 0 || !RLGL.context) return;
+    if (d3d11_activeShaderId == 0 || d3d11_activeShaderId > RLGL.shaderCount) return;
+    unsigned int shaderIdx = d3d11_activeShaderId - 1;
+    rlD3D11Shader *s = &RLGL.shaders[shaderIdx];
+    if (locIndex >= s->uniformCount) return;
+
+    rlD3D11UniformVar *u = &s->uniforms[locIndex];
+    rlD3D11CBufferInfo *cb = &s->cbuffers[u->cbufferIndex];
+
+    // Convert Matrix to float[16] and update CPU-side copy
+    rl_float16 matData = rlMatrixToFloatV(mat);
+    int copySize = (u->byteSize < (int)sizeof(float)*16) ? u->byteSize : (int)sizeof(float)*16;
+    if (cb->cpuData) memcpy(cb->cpuData + u->byteOffset, matData.v, copySize);
+
+    // Upload and bind
+    if (cb->buffer) {
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        if (SUCCEEDED(ID3D11DeviceContext_Map(RLGL.context, (ID3D11Resource *)cb->buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+            memcpy(mapped.pData, cb->cpuData, cb->byteSize);
+            ID3D11DeviceContext_Unmap(RLGL.context, (ID3D11Resource *)cb->buffer, 0);
+        }
+        if (cb->stage == 0) ID3D11DeviceContext_VSSetConstantBuffers(RLGL.context, cb->registerSlot, 1, &cb->buffer);
+        else                ID3D11DeviceContext_PSSetConstantBuffers(RLGL.context, cb->registerSlot, 1, &cb->buffer);
+    }
+}
+
+void rlSetUniformMatrices(int locIndex, const Matrix *mat, int count) {
+    // For bone matrices: update as an array of float4x4
+    if (locIndex < 0 || !mat || !RLGL.context || count <= 0) return;
+    if (d3d11_activeShaderId == 0 || d3d11_activeShaderId > RLGL.shaderCount) return;
+    unsigned int shaderIdx = d3d11_activeShaderId - 1;
+    rlD3D11Shader *s = &RLGL.shaders[shaderIdx];
+    if (locIndex >= s->uniformCount) return;
+
+    rlD3D11UniformVar *u = &s->uniforms[locIndex];
+    rlD3D11CBufferInfo *cb = &s->cbuffers[u->cbufferIndex];
+
+    int totalSize = count * (int)sizeof(float) * 16;
+    if (totalSize > u->byteSize) totalSize = u->byteSize;
+
+    // Convert matrices and copy to CPU buffer
+    if (cb->cpuData) {
+        for (int i = 0; i < count && (u->byteOffset + (i + 1) * 64) <= cb->byteSize; i++) {
+            rl_float16 matData = rlMatrixToFloatV(mat[i]);
+            memcpy(cb->cpuData + u->byteOffset + i * 64, matData.v, 64);
+        }
+    }
+
+    if (cb->buffer) {
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        if (SUCCEEDED(ID3D11DeviceContext_Map(RLGL.context, (ID3D11Resource *)cb->buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+            memcpy(mapped.pData, cb->cpuData, cb->byteSize);
+            ID3D11DeviceContext_Unmap(RLGL.context, (ID3D11Resource *)cb->buffer, 0);
+        }
+        if (cb->stage == 0) ID3D11DeviceContext_VSSetConstantBuffers(RLGL.context, cb->registerSlot, 1, &cb->buffer);
+        else                ID3D11DeviceContext_PSSetConstantBuffers(RLGL.context, cb->registerSlot, 1, &cb->buffer);
+    }
+}
+
+void rlSetUniformSampler(int locIndex, unsigned int textureId) {
+    // In D3D11, textures are bound via rlEnableTexture/rlActiveTextureSlot, not via uniforms
+    (void)locIndex; (void)textureId;
+}
 
 void rlSetShader(unsigned int id, int *locs)
 {
@@ -1855,6 +2354,136 @@ void rlLoadDrawCube(void) {
 }
 
 //----------------------------------------------------------------------------------
+// Shader reflection: extract constant buffer and uniform variable info
+//----------------------------------------------------------------------------------
+static void rlReflectShaderStage(unsigned int shaderIdx, ID3DBlob *blob, int stage)
+{
+    if (!blob) return;
+    rlD3D11Shader *s = &RLGL.shaders[shaderIdx];
+
+    ID3D11ShaderReflection *reflect = NULL;
+    HRESULT hr = D3DReflect(ID3D10Blob_GetBufferPointer(blob), ID3D10Blob_GetBufferSize(blob),
+                            &IID_ID3D11ShaderReflection, (void **)&reflect);
+    if (FAILED(hr) || !reflect) return;
+
+    D3D11_SHADER_DESC shaderDesc;
+    reflect->lpVtbl->GetDesc(reflect, &shaderDesc);
+
+    for (UINT i = 0; i < shaderDesc.ConstantBuffers && s->cbufferCount < RL_D3D11_MAX_CBUFFERS; i++) {
+        ID3D11ShaderReflectionConstantBuffer *cbReflect =
+            reflect->lpVtbl->GetConstantBufferByIndex(reflect, i);
+        D3D11_SHADER_BUFFER_DESC cbDesc;
+        hr = cbReflect->lpVtbl->GetDesc(cbReflect, &cbDesc);
+        if (FAILED(hr)) continue;
+        if (cbDesc.Type != D3D_CT_CBUFFER) continue; // Skip tbuffers etc.
+
+        // Find the bind point (register slot) for this cbuffer
+        D3D11_SHADER_INPUT_BIND_DESC bindDesc;
+        hr = reflect->lpVtbl->GetResourceBindingDescByName(reflect, cbDesc.Name, &bindDesc);
+        int regSlot = SUCCEEDED(hr) ? (int)bindDesc.BindPoint : (int)i;
+
+        int cbIdx = s->cbufferCount;
+        s->cbuffers[cbIdx].stage = stage;
+        s->cbuffers[cbIdx].registerSlot = regSlot;
+        s->cbuffers[cbIdx].byteSize = (int)cbDesc.Size;
+        // Create GPU constant buffer (dynamic for frequent updates)
+        s->cbuffers[cbIdx].buffer = rlCreateD3D11Buffer(NULL, cbDesc.Size, D3D11_BIND_CONSTANT_BUFFER, true);
+        // Allocate CPU-side copy (zeroed)
+        s->cbuffers[cbIdx].cpuData = (unsigned char *)RL_CALLOC(1, cbDesc.Size);
+        s->cbufferCount++;
+
+        // Enumerate variables within this constant buffer
+        for (UINT j = 0; j < cbDesc.Variables && s->uniformCount < RL_D3D11_MAX_UNIFORM_VARS; j++) {
+            ID3D11ShaderReflectionVariable *varReflect =
+                cbReflect->lpVtbl->GetVariableByIndex(cbReflect, j);
+            D3D11_SHADER_VARIABLE_DESC varDesc;
+            hr = varReflect->lpVtbl->GetDesc(varReflect, &varDesc);
+            if (FAILED(hr)) continue;
+
+            int uIdx = s->uniformCount;
+            strncpy(s->uniforms[uIdx].name, varDesc.Name, sizeof(s->uniforms[uIdx].name) - 1);
+            s->uniforms[uIdx].name[sizeof(s->uniforms[uIdx].name) - 1] = '\0';
+            s->uniforms[uIdx].cbufferIndex = cbIdx;
+            s->uniforms[uIdx].byteOffset = (int)varDesc.StartOffset;
+            s->uniforms[uIdx].byteSize = (int)varDesc.Size;
+            s->uniformCount++;
+
+            // For struct/array variables, also add entries for array elements and struct members
+            // This enables lookups like "lights[0].enabled"
+            ID3D11ShaderReflectionType *varType = varReflect->lpVtbl->GetType(varReflect);
+            if (varType) {
+                D3D11_SHADER_TYPE_DESC typeDesc;
+                hr = varType->lpVtbl->GetDesc(varType, &typeDesc);
+                if (SUCCEEDED(hr) && typeDesc.Class == D3D_SVC_STRUCT && typeDesc.Elements > 0) {
+                    // It's an array of structs — expand entries for member access
+                    UINT structStride = varDesc.Size / typeDesc.Elements;
+                    for (UINT elem = 0; elem < typeDesc.Elements; elem++) {
+                        for (UINT m = 0; m < typeDesc.Members && s->uniformCount < RL_D3D11_MAX_UNIFORM_VARS; m++) {
+                            ID3D11ShaderReflectionType *memberType = varType->lpVtbl->GetMemberTypeByIndex(varType, m);
+                            const char *memberName = varType->lpVtbl->GetMemberTypeName(varType, m);
+                            if (!memberName || !memberType) continue;
+
+                            D3D11_SHADER_TYPE_DESC memberTypeDesc;
+                            hr = memberType->lpVtbl->GetDesc(memberType, &memberTypeDesc);
+                            if (FAILED(hr)) continue;
+
+                            int mIdx = s->uniformCount;
+                            snprintf(s->uniforms[mIdx].name, sizeof(s->uniforms[mIdx].name),
+                                     "%s[%u].%s", varDesc.Name, elem, memberName);
+                            s->uniforms[mIdx].cbufferIndex = cbIdx;
+                            s->uniforms[mIdx].byteOffset = (int)(varDesc.StartOffset + elem * structStride + memberTypeDesc.Offset);
+                            // Compute member size from type
+                            int memberSize = 4; // default
+                            if (memberTypeDesc.Class == D3D_SVC_SCALAR) memberSize = 4;
+                            else if (memberTypeDesc.Class == D3D_SVC_VECTOR) memberSize = memberTypeDesc.Columns * 4;
+                            else if (memberTypeDesc.Class == D3D_SVC_MATRIX_COLUMNS || memberTypeDesc.Class == D3D_SVC_MATRIX_ROWS)
+                                memberSize = memberTypeDesc.Rows * memberTypeDesc.Columns * 4;
+                            s->uniforms[mIdx].byteSize = memberSize;
+                            s->uniformCount++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Reflect texture/SRV bindings (only for pixel shader stage)
+    if (stage == 1) {
+        for (UINT i = 0; i < shaderDesc.BoundResources && s->textureBindingCount < RL_D3D11_MAX_TEXTURE_BINDINGS; i++) {
+            D3D11_SHADER_INPUT_BIND_DESC bindDesc;
+            hr = reflect->lpVtbl->GetResourceBindingDesc(reflect, i, &bindDesc);
+            if (FAILED(hr)) continue;
+            if (bindDesc.Type == D3D_SIT_TEXTURE) {
+                int tbIdx = s->textureBindingCount;
+                strncpy(s->textureBindings[tbIdx].name, bindDesc.Name, sizeof(s->textureBindings[tbIdx].name) - 1);
+                s->textureBindings[tbIdx].name[sizeof(s->textureBindings[tbIdx].name) - 1] = '\0';
+                s->textureBindings[tbIdx].registerSlot = (int)bindDesc.BindPoint;
+                s->textureBindingCount++;
+                TRACELOG(RL_LOG_DEBUG, "SHADER: [stage %d] Texture binding '%s' at register(t%d)", stage, bindDesc.Name, (int)bindDesc.BindPoint);
+            }
+        }
+    }
+
+    reflect->lpVtbl->Release(reflect);
+}
+
+static void rlReflectShaderUniforms(unsigned int shaderIdx)
+{
+    rlD3D11Shader *s = &RLGL.shaders[shaderIdx];
+    s->cbufferCount = 0;
+    s->uniformCount = 0;
+    s->textureBindingCount = 0;
+
+    // Initialize material-map-to-register mapping to identity (slot i → register i)
+    for (int i = 0; i < RL_MAX_MATERIAL_MAPS; i++) s->texMaterialMapToRegister[i] = i;
+
+    // Reflect VS constant buffers (stage=0)
+    rlReflectShaderStage(shaderIdx, s->vsBlob, 0);
+    // Reflect PS constant buffers and texture bindings (stage=1)
+    rlReflectShaderStage(shaderIdx, s->psBlob, 1);
+}
+
+//----------------------------------------------------------------------------------
 // Default shader loading
 //----------------------------------------------------------------------------------
 static void rlLoadShaderDefault(void)
@@ -1866,12 +2495,16 @@ static void rlLoadShaderDefault(void)
 
     if (RLGL.State.defaultShaderId > 0) {
         TRACELOG(RL_LOG_INFO, "SHADER: [ID %i] Default D3D11 shader loaded successfully", RLGL.State.defaultShaderId);
-        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_VERTEX_POSITION] = 0;
-        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_VERTEX_TEXCOORD01] = 1;
-        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_VERTEX_COLOR] = 3;
-        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_MATRIX_MVP] = 0;
-        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_COLOR_DIFFUSE] = 1;
-        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_MAP_DIFFUSE] = 0;
+
+        // Set default shader attribute locations (input layout slots)
+        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_VERTEX_POSITION] = rlGetLocationAttrib(RLGL.State.defaultShaderId, "vertexPosition");
+        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_VERTEX_TEXCOORD01] = rlGetLocationAttrib(RLGL.State.defaultShaderId, "vertexTexCoord");
+        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_VERTEX_COLOR] = rlGetLocationAttrib(RLGL.State.defaultShaderId, "vertexColor");
+
+        // Set default shader uniform locations (from reflection)
+        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_MATRIX_MVP] = rlGetLocationUniform(RLGL.State.defaultShaderId, "mvp");
+        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_COLOR_DIFFUSE] = rlGetLocationUniform(RLGL.State.defaultShaderId, "colDiffuse");
+        RLGL.State.defaultShaderLocs[RL_SHADER_LOC_MAP_DIFFUSE] = rlGetLocationUniform(RLGL.State.defaultShaderId, "texture0");
     }
 }
 

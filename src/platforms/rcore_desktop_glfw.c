@@ -1037,7 +1037,12 @@ void DisableCursor(void)
 // Swap back buffer with front buffer (screen drawing)
 void SwapScreenBuffer(void)
 {
+#if defined(GRAPHICS_API_EXTERNAL_BACKEND)
+    extern void rlSwapScreenBuffer(void);
+    rlSwapScreenBuffer();
+#else
     glfwSwapBuffers(platform.handle);
+#endif
 }
 
 //----------------------------------------------------------------------------------
@@ -1375,6 +1380,11 @@ int InitPlatform(bool headless)
     // with backward compatibility to older OpenGL versions.
     // For example, if using OpenGL 1.1, driver can provide a 4.3 backwards compatible context.
 
+#if defined(GRAPHICS_API_EXTERNAL_BACKEND)
+    // Non-OpenGL backends (D3D11, Vulkan, Metal, etc.) manage their own graphics context.
+    // Tell GLFW not to create an OpenGL context.
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+#else
     // Check selection OpenGL version
     if (rlGetVersion() == RL_OPENGL_21)
     {
@@ -1418,6 +1428,7 @@ int InitPlatform(bool headless)
         glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
         glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API);
     }
+#endif // !GRAPHICS_API_EXTERNAL_BACKEND
 
     // NOTE: GLFW 3.4+ defers initialization of the Joystick subsystem on the first call to any Joystick related functions.
     // Forcing this initialization here avoids doing it on PollInputEvents() called by EndDrawing() after first frame has been just drawn.
@@ -1541,6 +1552,35 @@ int InitPlatform(bool headless)
         return -1;
     }
 
+#if defined(GRAPHICS_API_EXTERNAL_BACKEND)
+    // External backends don't use OpenGL context — skip glfwMakeContextCurrent.
+    // Mark window as ready and set up framebuffer dimensions.
+    CORE.Window.ready = true;
+    {
+        int fbWidth = CORE.Window.screen.width;
+        int fbHeight = CORE.Window.screen.height;
+
+        if ((CORE.Window.flags & FLAG_WINDOW_HIGHDPI) > 0)
+        {
+#if !defined(__APPLE__)
+            glfwGetFramebufferSize(platform.handle, &fbWidth, &fbHeight);
+            CORE.Window.screenScale = MatrixScale((float)fbWidth/CORE.Window.screen.width, (float)fbHeight/CORE.Window.screen.height, 1.0f);
+            SetMouseScale((float)CORE.Window.screen.width/fbWidth, (float)CORE.Window.screen.height/fbHeight);
+#endif
+        }
+
+        CORE.Window.render.width = fbWidth;
+        CORE.Window.render.height = fbHeight;
+        CORE.Window.currentFbo.width = fbWidth;
+        CORE.Window.currentFbo.height = fbHeight;
+
+        TRACELOG(LOG_INFO, "DISPLAY: Device initialized successfully (external backend)");
+        TRACELOG(LOG_INFO, "    > Display size: %i x %i", CORE.Window.display.width, CORE.Window.display.height);
+        TRACELOG(LOG_INFO, "    > Screen size:  %i x %i", CORE.Window.screen.width, CORE.Window.screen.height);
+        TRACELOG(LOG_INFO, "    > Render size:  %i x %i", CORE.Window.render.width, CORE.Window.render.height);
+        TRACELOG(LOG_INFO, "    > Viewport offsets: %i, %i", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
+    }
+#else
     glfwMakeContextCurrent(platform.handle);
     result = glfwGetError(NULL);
 
@@ -1595,6 +1635,7 @@ int InitPlatform(bool headless)
         TRACELOG(LOG_FATAL, "PLATFORM: Failed to initialize graphics device");
         return -1;
     }
+#endif // !GRAPHICS_API_EXTERNAL_BACKEND
 
     if ((CORE.Window.flags & FLAG_WINDOW_MINIMIZED) > 0) MinimizeWindow();
 
@@ -1623,7 +1664,11 @@ int InitPlatform(bool headless)
 
     // Load OpenGL extensions
     // NOTE: GL procedures address loader is required to load extensions
+#if defined(GRAPHICS_API_EXTERNAL_BACKEND)
+    rlLoadExtensions(NULL);     // External backends ignore the loader parameter
+#else
     rlLoadExtensions(glfwGetProcAddress);
+#endif
     //----------------------------------------------------------------------------
 
     // Initialize input events callbacks

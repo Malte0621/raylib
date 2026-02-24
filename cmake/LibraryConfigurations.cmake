@@ -140,20 +140,25 @@ if (${GRAPHICS_BACKEND} MATCHES "Auto")
         include(CheckCSourceCompiles)
         set(CMAKE_REQUIRED_LIBRARIES d3d12 dxgi)
         check_c_source_compiles("
+            #include <initguid.h>
             #include <d3d12.h>
             int main(void) { D3D12CreateDevice(0, D3D_FEATURE_LEVEL_11_0, &IID_ID3D12Device, 0); return 0; }
         " RL_HAS_D3D12)
         unset(CMAKE_REQUIRED_LIBRARIES)
 
         if (RL_HAS_D3D12)
-            set(GRAPHICS "GRAPHICS_API_DIRECT3D12")
-            set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d12 d3dcompiler dxgi)
+            # D3D12 detected but the mesh rendering path (rl_backend_d3d12.c) is not yet complete:
+            # rlSetUniform/rlSetUniformMatrix are stubs, no shader reflection, no state setup before
+            # rlDrawVertexArray*, rlSetVertexAttribute is a no-op, rlEnableVertexBuffer has stride=0.
+            # Using D3D11 until D3D12 mesh rendering is implemented.
+            message(STATUS "[Auto] DirectX 12 SDK detected but mesh rendering path incomplete, using DirectX 11")
+            set(GRAPHICS "GRAPHICS_API_DIRECT3D11")
+            set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d11 d3dcompiler dxgi dxguid)
             set(_RL_AUTO_BACKEND_CHOSEN TRUE)
-            message(STATUS "[Auto] Selected DirectX 12 (native Windows API)")
         else()
             # DirectX 11 is always available on Windows 7+
             set(GRAPHICS "GRAPHICS_API_DIRECT3D11")
-            set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d11 d3dcompiler dxgi)
+            set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d11 d3dcompiler dxgi dxguid)
             set(_RL_AUTO_BACKEND_CHOSEN TRUE)
             message(STATUS "[Auto] Selected DirectX 11 (native Windows API, D3D12 not available)")
         endif()
@@ -202,7 +207,7 @@ elseif (NOT ${GRAPHICS_BACKEND} MATCHES "OFF")
             message(FATAL_ERROR "DirectX11 backend is only supported on Windows")
         endif()
         set(GRAPHICS "GRAPHICS_API_DIRECT3D11")
-        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d11 d3dcompiler dxgi)
+        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d11 d3dcompiler dxgi dxguid)
     elseif (${GRAPHICS_BACKEND} MATCHES "DirectX10")
         if (NOT WIN32)
             message(FATAL_ERROR "DirectX10 backend is only supported on Windows")

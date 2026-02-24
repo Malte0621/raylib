@@ -728,6 +728,7 @@ RLAPI void rlSetBlendFactorsSeparate(int glSrcRGB, int glDstRGB, int glSrcAlpha,
 RLAPI void rlglInit(int width, int height, bool headless);             // Initialize rlgl (buffers, shaders, textures, states)
 RLAPI void rlglClose(void);                             // De-initialize rlgl (buffers, shaders, textures)
 RLAPI void rlLoadExtensions(void *loader);              // Load OpenGL extensions (loader function required)
+RLAPI void rlSwapScreenBuffer(void);                    // Swap back buffer (external backends: D3D11/Vulkan/Metal present)
 RLAPI int rlGetVersion(void);                           // Get current OpenGL version
 RLAPI void rlSetFramebufferWidth(int width);            // Set current framebuffer width
 RLAPI int rlGetFramebufferWidth(void);                  // Get default framebuffer width
@@ -2440,6 +2441,13 @@ void rlglClose(void)
     glDeleteTextures(1, &RLGL.State.defaultTextureId); // Unload default texture
     TRACELOG(RL_LOG_INFO, "TEXTURE: [ID %i] Default texture unloaded successfully", RLGL.State.defaultTextureId);
 #endif
+}
+
+// Swap back buffer (OpenGL: no-op, handled by platform layer via glfwSwapBuffers)
+void rlSwapScreenBuffer(void)
+{
+    // OpenGL swap is handled by the platform layer (glfwSwapBuffers)
+    // This function exists for API compatibility; external backends override it.
 }
 
 // Load OpenGL extensions
