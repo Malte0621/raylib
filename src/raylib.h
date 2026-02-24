@@ -943,6 +943,20 @@ typedef enum {
     NPATCH_THREE_PATCH_HORIZONTAL   // Npatch layout: 3x1 tiles
 } NPatchLayout;
 
+// Graphics rendering backend
+typedef enum {
+    RENDER_BACKEND_DEFAULT = -1,        // Auto-select best available backend at runtime
+    RENDER_BACKEND_OPENGL = 0,          // OpenGL rendering backend
+    RENDER_BACKEND_VULKAN,              // Vulkan rendering backend
+    RENDER_BACKEND_METAL,               // Metal rendering backend (Apple)
+    RENDER_BACKEND_DIRECT3D9,           // Direct3D 9 rendering backend (Windows)
+    RENDER_BACKEND_DIRECT3D10,          // Direct3D 10 rendering backend (Windows)
+    RENDER_BACKEND_DIRECT3D11,          // Direct3D 11 rendering backend (Windows)
+    RENDER_BACKEND_DIRECT3D12,          // Direct3D 12 rendering backend (Windows)
+    RENDER_BACKEND_SOFTWARE,            // Software rendering backend (CPU, no GPU)
+    RENDER_BACKEND_COUNT                // Total number of backends (internal use)
+} RenderBackend;
+
 // Callbacks to hook some internal functions
 // WARNING: These callbacks are intended for advanced users
 typedef void (*TraceLogCallback)(int logLevel, const char *text, va_list args);  // Logging: Redirect trace log messages
@@ -1015,6 +1029,14 @@ RLAPI const char *GetClipboardText(void);                         // Get clipboa
 RLAPI Image GetClipboardImage(void);                              // Get clipboard image content
 RLAPI void EnableEventWaiting(void);                              // Enable waiting for events on EndDrawing(), no automatic event polling
 RLAPI void DisableEventWaiting(void);                             // Disable waiting for events on EndDrawing(), automatic events polling
+
+// Render backend functions
+RLAPI void SetRenderBackend(int backend);                         // Set render backend to use (must be called before InitWindow, or pass RENDER_BACKEND_DEFAULT for auto)
+RLAPI int GetRenderBackend(void);                                 // Get active graphics rendering backend (RenderBackend enum)
+RLAPI int GetPreferredRenderBackend(void);                        // Get the best available backend based on platform preference order
+RLAPI const char *GetRenderBackendName(void);                     // Get active graphics rendering backend name as string
+RLAPI bool IsRenderBackendSupported(int backend);                 // Check if a specific render backend was compiled in
+RLAPI int GetSupportedRenderBackends(int *backends, int maxCount); // Get list of all compiled-in backends, returns count
 
 // Cursor-related functions
 RLAPI void ShowCursor2(void);                                      // Shows cursor

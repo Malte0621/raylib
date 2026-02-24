@@ -148,14 +148,29 @@
     #define RL_FREE(p)        free(p)
 #endif
 
-// Security check in case no GRAPHICS_API_OPENGL_* defined
+// Security check in case no GRAPHICS_API_* defined
 #if !defined(GRAPHICS_API_OPENGL_11) && \
     !defined(GRAPHICS_API_OPENGL_21) && \
     !defined(GRAPHICS_API_OPENGL_33) && \
     !defined(GRAPHICS_API_OPENGL_43) && \
     !defined(GRAPHICS_API_OPENGL_ES2) && \
-    !defined(GRAPHICS_API_OPENGL_ES3)
+    !defined(GRAPHICS_API_OPENGL_ES3) && \
+    !defined(GRAPHICS_API_DIRECT3D12) && \
+    !defined(GRAPHICS_API_DIRECT3D11) && \
+    !defined(GRAPHICS_API_DIRECT3D10) && \
+    !defined(GRAPHICS_API_DIRECT3D9) && \
+    !defined(GRAPHICS_API_VULKAN) && \
+    !defined(GRAPHICS_API_METAL) && \
+    !defined(GRAPHICS_API_SOFTWARE)
         #define GRAPHICS_API_OPENGL_33
+#endif
+
+// Check if a non-OpenGL backend is selected
+#if defined(GRAPHICS_API_DIRECT3D12) || defined(GRAPHICS_API_DIRECT3D11) || \
+    defined(GRAPHICS_API_DIRECT3D10) || defined(GRAPHICS_API_DIRECT3D9) || \
+    defined(GRAPHICS_API_VULKAN) || defined(GRAPHICS_API_METAL) || \
+    defined(GRAPHICS_API_SOFTWARE)
+    #define GRAPHICS_API_EXTERNAL_BACKEND  // Non-OpenGL backend, implementation in separate .c file
 #endif
 
 // Security check in case multiple GRAPHICS_API_OPENGL_* defined
@@ -385,10 +400,10 @@ typedef struct rlVertexBuffer {
     float *texcoords;           // Vertex texture coordinates (UV - 2 components per vertex) (shader-location = 1)
     float *normals;             // Vertex normal (XYZ - 3 components per vertex) (shader-location = 2)
     unsigned char *colors;      // Vertex colors (RGBA - 4 components per vertex) (shader-location = 3)
-#if defined(GRAPHICS_API_OPENGL_11) || defined(GRAPHICS_API_OPENGL_33)
+#if defined(GRAPHICS_API_OPENGL_11) || defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_EXTERNAL_BACKEND)
     unsigned int *indices;      // Vertex indices (in case vertex data comes indexed) (6 indices per quad)
 #endif
-#if defined(GRAPHICS_API_OPENGL_ES2)
+#if defined(GRAPHICS_API_OPENGL_ES2) && !defined(GRAPHICS_API_EXTERNAL_BACKEND)
     unsigned short *indices;    // Vertex indices (in case vertex data comes indexed) (6 indices per quad)
 #endif
     unsigned int vaoId;         // OpenGL Vertex Array Object id
@@ -422,14 +437,21 @@ typedef struct rlRenderBatch {
     float currentDepth;         // Current depth value for next draw
 } rlRenderBatch;
 
-// OpenGL version
+// Graphics backend version
 typedef enum {
     RL_OPENGL_11 = 1,           // OpenGL 1.1
     RL_OPENGL_21,               // OpenGL 2.1 (GLSL 120)
     RL_OPENGL_33,               // OpenGL 3.3 (GLSL 330)
     RL_OPENGL_43,               // OpenGL 4.3 (using GLSL 330)
     RL_OPENGL_ES_20,            // OpenGL ES 2.0 (GLSL 100)
-    RL_OPENGL_ES_30             // OpenGL ES 3.0 (GLSL 300 es)
+    RL_OPENGL_ES_30,            // OpenGL ES 3.0 (GLSL 300 es)
+    RL_SOFTWARE = 7,            // Software (CPU-based rasterization, no GPU)
+    RL_DIRECT3D_9 = 8,          // Direct3D 9 (HLSL SM 3.0)
+    RL_DIRECT3D_10 = 9,         // Direct3D 10 (HLSL SM 4.0)
+    RL_DIRECT3D_11 = 10,        // Direct3D 11 (HLSL 5.0)
+    RL_DIRECT3D_12,             // Direct3D 12 (HLSL 5.0)
+    RL_VULKAN = 20,             // Vulkan (SPIR-V)
+    RL_METAL = 30,              // Metal (MSL)
 } rlGlVersion;
 
 // Trace log level
@@ -822,6 +844,11 @@ RLAPI void rlLoadDrawQuad(void);     // Load and draw a quad
 
 #if defined(RLGL_IMPLEMENTATION)
 
+// When using a non-OpenGL backend (D3D11, Vulkan, Metal), the implementation
+// is provided by the corresponding rl_backend_*.c file, so we skip the
+// OpenGL implementation below.
+#if !defined(GRAPHICS_API_EXTERNAL_BACKEND)
+
 // Expose OpenGL functions from glad in raylib
 #if defined(BUILD_LIBTYPE_SHARED)
     #define GLAD_API_CALL_EXPORT
@@ -985,6 +1012,8 @@ RLAPI void rlLoadDrawQuad(void);     // Load and draw a quad
     #endif
 #endif
 
+#endif // !GRAPHICS_API_EXTERNAL_BACKEND (pause guard for shared defines)
+
 // Default shader vertex attribute names to set location points
 #ifndef RL_DEFAULT_SHADER_ATTRIB_NAME_POSITION
     #define RL_DEFAULT_SHADER_ATTRIB_NAME_POSITION     "vertexPosition"    // Bound by default to shader location: RL_DEFAULT_SHADER_ATTRIB_NAME_POSITION
@@ -1041,6 +1070,8 @@ RLAPI void rlLoadDrawQuad(void);     // Load and draw a quad
 #ifndef RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE2
     #define RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE2  "texture2"          // texture2 (texture slot active 2)
 #endif
+
+#if !defined(GRAPHICS_API_EXTERNAL_BACKEND) // resume OpenGL implementation guard
 
 //----------------------------------------------------------------------------------
 // Types and Structures Definition
@@ -5332,5 +5363,7 @@ static Matrix rlMatrixInvert(Matrix mat)
 
     return result;
 }
+
+#endif  // !GRAPHICS_API_EXTERNAL_BACKEND
 
 #endif  // RLGL_IMPLEMENTATION

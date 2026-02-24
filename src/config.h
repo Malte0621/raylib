@@ -95,6 +95,14 @@
 // Module: rlgl - Configuration values
 //------------------------------------------------------------------------------------
 
+// Graphics backend selection (only one should be defined at a time)
+// By default, the backend is selected via CMake (GRAPHICS_BACKEND option).
+// Uncomment ONE of the following lines to force a specific backend:
+//#define GRAPHICS_API_DIRECT3D11            // Direct3D 11 backend (Windows only)
+//#define GRAPHICS_API_VULKAN                // Vulkan backend (Windows, Linux, Android)
+//#define GRAPHICS_API_METAL                 // Metal backend (macOS, iOS only)
+// If none of the above is defined, OpenGL is used (default, selected by CMake)
+
 // Enable OpenGL Debug Context (only available on OpenGL 4.3)
 //#define RLGL_ENABLE_OPENGL_DEBUG_CONTEXT       1
 

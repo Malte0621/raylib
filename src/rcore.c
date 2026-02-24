@@ -96,6 +96,7 @@
 #endif
 
 #include "raylib.h"                 // Declares module functions
+#include "rl_backend.h"             // Multi-backend render abstraction layer
 
 // Check if config flags have been externally provided on compilation line
 #if !defined(EXTERNAL_CONFIG_FLAGS)
@@ -376,6 +377,12 @@ CoreData CORE = { 0 };                      // Global CORE state context
 // referenced from other modules to support GPU data loading
 // NOTE: Useful to allow Texture, RenderTexture, Font.texture, Mesh.vaoId/vboId, Shader loading
 bool isGpuReady = false;
+
+//----------------------------------------------------------------------------------
+// Runtime Render Backend Selection
+//----------------------------------------------------------------------------------
+static int activeRenderBackend = RENDER_BACKEND_DEFAULT;   // Currently active render backend (-1 = auto-detect)
+static bool renderBackendManuallySet = false;               // Whether user explicitly called SetRenderBackend()
 
 #if defined(SUPPORT_SCREEN_CAPTURE)
 static int screenshotCounter = 0;           // Screenshots counter
@@ -658,6 +665,31 @@ void InitWindow(int width, int height, const char *title)
     TRACELOG(LOG_INFO, "    > raudio:.... not loaded (optional)");
 #endif
 
+    // Runtime render backend selection
+    //--------------------------------------------------------------
+    // Log all compiled-in backends
+    TRACELOG(LOG_INFO, "Compiled-in render backends:");
+    if (IsRenderBackendSupported(RENDER_BACKEND_VULKAN))     TRACELOG(LOG_INFO, "    > Vulkan");
+    if (IsRenderBackendSupported(RENDER_BACKEND_METAL))      TRACELOG(LOG_INFO, "    > Metal");
+    if (IsRenderBackendSupported(RENDER_BACKEND_DIRECT3D12)) TRACELOG(LOG_INFO, "    > Direct3D 12");
+    if (IsRenderBackendSupported(RENDER_BACKEND_DIRECT3D11)) TRACELOG(LOG_INFO, "    > Direct3D 11");
+    if (IsRenderBackendSupported(RENDER_BACKEND_DIRECT3D10)) TRACELOG(LOG_INFO, "    > Direct3D 10");
+    if (IsRenderBackendSupported(RENDER_BACKEND_DIRECT3D9))  TRACELOG(LOG_INFO, "    > Direct3D 9");
+    if (IsRenderBackendSupported(RENDER_BACKEND_OPENGL))     TRACELOG(LOG_INFO, "    > OpenGL");
+    if (IsRenderBackendSupported(RENDER_BACKEND_SOFTWARE))   TRACELOG(LOG_INFO, "    > Software");
+
+    // Auto-select backend if not manually set
+    if (activeRenderBackend == RENDER_BACKEND_DEFAULT)
+    {
+        activeRenderBackend = GetPreferredRenderBackend();
+        TRACELOG(LOG_INFO, "Render backend auto-selected: %s", GetRenderBackendName());
+    }
+    else
+    {
+        TRACELOG(LOG_INFO, "Render backend manually set: %s", GetRenderBackendName());
+    }
+    //--------------------------------------------------------------
+
     // Initialize window data
     CORE.Window.screen.width = width;
     CORE.Window.screen.height = height;
@@ -883,6 +915,215 @@ void EnableEventWaiting(void)
 void DisableEventWaiting(void)
 {
     CORE.Window.eventWaiting = false;
+}
+
+// Get active graphics rendering backend (returns RenderBackend enum value)
+int GetRenderBackend(void)
+{
+    // If a backend has been selected at runtime, return it
+    if (activeRenderBackend != RENDER_BACKEND_DEFAULT) return activeRenderBackend;
+
+    // Fallback: return compile-time default (for code that queries before InitWindow)
+#if defined(GRAPHICS_API_VULKAN)
+    return RENDER_BACKEND_VULKAN;
+#elif defined(GRAPHICS_API_METAL)
+    return RENDER_BACKEND_METAL;
+#elif defined(GRAPHICS_API_DIRECT3D12)
+    return RENDER_BACKEND_DIRECT3D12;
+#elif defined(GRAPHICS_API_DIRECT3D11)
+    return RENDER_BACKEND_DIRECT3D11;
+#elif defined(GRAPHICS_API_DIRECT3D10)
+    return RENDER_BACKEND_DIRECT3D10;
+#elif defined(GRAPHICS_API_DIRECT3D9)
+    return RENDER_BACKEND_DIRECT3D9;
+#elif defined(GRAPHICS_API_SOFTWARE)
+    return RENDER_BACKEND_SOFTWARE;
+#else
+    return RENDER_BACKEND_OPENGL;
+#endif
+}
+
+// Get active graphics rendering backend name as string
+const char *GetRenderBackendName(void)
+{
+    int backend = GetRenderBackend();
+
+    switch (backend)
+    {
+        case RENDER_BACKEND_VULKAN:     return "Vulkan";
+        case RENDER_BACKEND_METAL:      return "Metal";
+        case RENDER_BACKEND_DIRECT3D12: return "Direct3D 12";
+        case RENDER_BACKEND_DIRECT3D11: return "Direct3D 11";
+        case RENDER_BACKEND_DIRECT3D10: return "Direct3D 10";
+        case RENDER_BACKEND_DIRECT3D9:  return "Direct3D 9";
+        case RENDER_BACKEND_SOFTWARE:   return "Software";
+        case RENDER_BACKEND_OPENGL:
+        {
+#if defined(GRAPHICS_API_OPENGL_43)
+            return "OpenGL 4.3";
+#elif defined(GRAPHICS_API_OPENGL_33)
+            return "OpenGL 3.3";
+#elif defined(GRAPHICS_API_OPENGL_21)
+            return "OpenGL 2.1";
+#elif defined(GRAPHICS_API_OPENGL_11)
+            return "OpenGL 1.1";
+#elif defined(GRAPHICS_API_OPENGL_ES3)
+            return "OpenGL ES 3.0";
+#elif defined(GRAPHICS_API_OPENGL_ES2)
+            return "OpenGL ES 2.0";
+#else
+            return "OpenGL";
+#endif
+        }
+        default: return "Unknown";
+    }
+}
+
+// Check if a specific render backend was compiled in (takes RenderBackend enum)
+bool IsRenderBackendSupported(int backend)
+{
+    switch (backend)
+    {
+        case RENDER_BACKEND_OPENGL:
+#if RL_BACKEND_OPENGL
+            return true;
+#else
+            return false;
+#endif
+        case RENDER_BACKEND_VULKAN:
+#if RL_BACKEND_VULKAN
+            return true;
+#else
+            return false;
+#endif
+        case RENDER_BACKEND_METAL:
+#if RL_BACKEND_METAL
+            return true;
+#else
+            return false;
+#endif
+        case RENDER_BACKEND_DIRECT3D9:
+#if RL_BACKEND_D3D9
+            return true;
+#else
+            return false;
+#endif
+        case RENDER_BACKEND_DIRECT3D10:
+#if RL_BACKEND_D3D10
+            return true;
+#else
+            return false;
+#endif
+        case RENDER_BACKEND_DIRECT3D11:
+#if RL_BACKEND_D3D11
+            return true;
+#else
+            return false;
+#endif
+        case RENDER_BACKEND_DIRECT3D12:
+#if RL_BACKEND_D3D12
+            return true;
+#else
+            return false;
+#endif
+        case RENDER_BACKEND_SOFTWARE:
+#if RL_BACKEND_SOFTWARE
+            return true;
+#else
+            return false;
+#endif
+        default: return false;
+    }
+}
+
+// Set the render backend to use (must be called BEFORE InitWindow)
+// Pass RENDER_BACKEND_DEFAULT for automatic best-available selection
+void SetRenderBackend(int backend)
+{
+    if (CORE.Window.ready)
+    {
+        TRACELOG(LOG_WARNING, "SYSTEM: SetRenderBackend() must be called before InitWindow()");
+        return;
+    }
+
+    if (backend == RENDER_BACKEND_DEFAULT)
+    {
+        activeRenderBackend = RENDER_BACKEND_DEFAULT;
+        renderBackendManuallySet = false;
+        TRACELOG(LOG_INFO, "SYSTEM: Render backend set to auto-detect");
+        return;
+    }
+
+    if (!IsRenderBackendSupported(backend))
+    {
+        TRACELOG(LOG_WARNING, "SYSTEM: Render backend %d is not compiled in, ignoring SetRenderBackend()", backend);
+        return;
+    }
+
+    activeRenderBackend = backend;
+    renderBackendManuallySet = true;
+    TRACELOG(LOG_INFO, "SYSTEM: Render backend manually set to: %d", backend);
+}
+
+// Get the best available backend based on platform preference order:
+// Vulkan > (Metal on Apple) > DirectX12 > DirectX11 > DirectX10 > DirectX9 > OpenGL > Software
+int GetPreferredRenderBackend(void)
+{
+    // If user manually set a backend, respect that
+    if (renderBackendManuallySet && (activeRenderBackend != RENDER_BACKEND_DEFAULT))
+        return activeRenderBackend;
+
+    // Preference order: Vulkan, Metal (Apple only), DX12, DX11, DX10, DX9, OpenGL, Software
+    static const int preferenceOrder[] = {
+        RENDER_BACKEND_VULKAN,
+        RENDER_BACKEND_METAL,
+        RENDER_BACKEND_DIRECT3D12,
+        RENDER_BACKEND_DIRECT3D11,
+        RENDER_BACKEND_DIRECT3D10,
+        RENDER_BACKEND_DIRECT3D9,
+        RENDER_BACKEND_OPENGL,
+        RENDER_BACKEND_SOFTWARE,
+    };
+    static const int preferenceCount = sizeof(preferenceOrder)/sizeof(preferenceOrder[0]);
+
+    for (int i = 0; i < preferenceCount; i++)
+    {
+        if (IsRenderBackendSupported(preferenceOrder[i]))
+            return preferenceOrder[i];
+    }
+
+    // Absolute fallback
+    return RENDER_BACKEND_OPENGL;
+}
+
+// Get list of all compiled-in backends, returns count
+// Call with backends=NULL to just get the count
+int GetSupportedRenderBackends(int *backends, int maxCount)
+{
+    static const int allBackends[] = {
+        RENDER_BACKEND_OPENGL,
+        RENDER_BACKEND_VULKAN,
+        RENDER_BACKEND_METAL,
+        RENDER_BACKEND_DIRECT3D9,
+        RENDER_BACKEND_DIRECT3D10,
+        RENDER_BACKEND_DIRECT3D11,
+        RENDER_BACKEND_DIRECT3D12,
+        RENDER_BACKEND_SOFTWARE,
+    };
+    static const int totalBackends = sizeof(allBackends)/sizeof(allBackends[0]);
+
+    int count = 0;
+    for (int i = 0; i < totalBackends; i++)
+    {
+        if (IsRenderBackendSupported(allBackends[i]))
+        {
+            if (backends && (count < maxCount))
+                backends[count] = allBackends[i];
+            count++;
+        }
+    }
+
+    return count;
 }
 
 // Check if cursor is not visible

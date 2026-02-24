@@ -25,6 +25,7 @@ set(raylib_public_headers
     raylib.h
     rlgl.h
     raymath.h
+    rl_unified_shader.h
     )
 
 # Sources to be compiled
@@ -36,6 +37,7 @@ set(raylib_sources
     rtext.c
     rtextures.c
     utils.c
+    rl_unified_shader.c
     )
 
 # <root>/cmake/GlfwImport.cmake handles the details around the inclusion of glfw
@@ -46,7 +48,40 @@ endif ()
 # Sets additional platform options and link libraries for each platform
 # also selects the proper graphics API and version for that platform
 # Produces a variable LIBS_PRIVATE that will be used later
+# NOTE: This may auto-select the best backend when GRAPHICS_BACKEND=Auto
 include(LibraryConfigurations)
+
+# Add graphics backend source files based on selected backend
+# (must come AFTER LibraryConfigurations so GRAPHICS is fully resolved)
+if (${GRAPHICS} MATCHES "GRAPHICS_API_DIRECT3D12")
+    list(APPEND raylib_sources rl_backend_d3d12.c)
+    list(APPEND raylib_public_headers rl_backend.h)
+    MESSAGE(STATUS "Graphics Backend: Direct3D 12")
+elseif (${GRAPHICS} MATCHES "GRAPHICS_API_DIRECT3D11")
+    list(APPEND raylib_sources rl_backend_d3d11.c)
+    list(APPEND raylib_public_headers rl_backend.h)
+    MESSAGE(STATUS "Graphics Backend: Direct3D 11")
+elseif (${GRAPHICS} MATCHES "GRAPHICS_API_DIRECT3D10")
+    list(APPEND raylib_sources rl_backend_d3d10.c)
+    list(APPEND raylib_public_headers rl_backend.h)
+    MESSAGE(STATUS "Graphics Backend: Direct3D 10")
+elseif (${GRAPHICS} MATCHES "GRAPHICS_API_DIRECT3D9")
+    list(APPEND raylib_sources rl_backend_d3d9.c)
+    list(APPEND raylib_public_headers rl_backend.h)
+    MESSAGE(STATUS "Graphics Backend: Direct3D 9")
+elseif (${GRAPHICS} MATCHES "GRAPHICS_API_VULKAN")
+    list(APPEND raylib_sources rl_backend_vulkan.c)
+    list(APPEND raylib_public_headers rl_backend.h)
+    MESSAGE(STATUS "Graphics Backend: Vulkan")
+elseif (${GRAPHICS} MATCHES "GRAPHICS_API_METAL")
+    list(APPEND raylib_sources rl_backend_metal.m)
+    list(APPEND raylib_public_headers rl_backend.h)
+    MESSAGE(STATUS "Graphics Backend: Metal")
+elseif (${GRAPHICS} MATCHES "GRAPHICS_API_SOFTWARE")
+    list(APPEND raylib_sources rl_backend_software.c)
+    list(APPEND raylib_public_headers rl_backend.h)
+    MESSAGE(STATUS "Graphics Backend: Software (CPU)")
+endif()
 
 if (SUPPORT_MODULE_RAUDIO)
     MESSAGE(STATUS "Audio Backend: miniaudio")
