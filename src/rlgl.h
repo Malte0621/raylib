@@ -858,7 +858,19 @@ RLAPI void rlLoadDrawQuad(void);     // Load and draw a quad
     #include "external/glad.h"          // GLAD extensions loading library, includes OpenGL headers
 #endif
 
-#if defined(GRAPHICS_API_OPENGL_ES3)
+#if defined(PLATFORM_IOS)
+    // These required macros should be defined in Xcode
+    #ifndef GRAPHICS_API_OPENGL_ES3
+        #error "GRAPHICS_API_OPENGL_ES3 required on PLATFORM_IOS"
+    #endif
+    #ifndef GL_GLEXT_PROTOTYPES
+        #error "GL_GLEXT_PROTOTYPES required on PLATFORM_IOS"
+    #endif
+    #include "libGLESv2/GLES/glext.h"
+    #include "libGLESv2/GLES2/gl2.h"
+    #include "libGLESv2/GLES2/gl2ext.h"           // OpenGL ES 2.0 extensions library
+    #include "libGLESv2/GLES3/gl3.h"
+#elif defined(GRAPHICS_API_OPENGL_ES3)
     #include <GLES3/gl3.h>              // OpenGL ES 3.0 library
     #define GL_GLEXT_PROTOTYPES
     #include <GLES2/gl2ext.h>           // OpenGL ES 2.0 extensions library
@@ -2322,47 +2334,68 @@ void rlglInit(int width, int height, bool headless)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);     // Clear color and depth buffers (depth buffer required for 3D)
 }
 
-GLuint* createFBO(GLuint texture, int width, int height) {
-    GLuint* fbo = (GLuint*)malloc(sizeof(GLuint));
-    glGenFramebuffers(1, fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, *fbo);
+GLuint createFBO(GLuint* outTexture, int width, int height) {
+    GLuint fbo;
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
-    // Create a texture to attach to the FBO
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    // Create and configure texture
+    glGenTextures(1, outTexture);
+    glBindTexture(GL_TEXTURE_2D, *outTexture);
+
+#if defined(GL_RGBA8)
+    GLint internalFormat = GL_RGBA8; // Desktop or GLES 3.0+
+#else
+    GLint internalFormat = GL_RGBA;  // GLES 2.0 fallback
+#endif
+
+    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
 
-    // Check if the FBO is complete
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    // Attach texture to framebuffer
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *outTexture, 0);
+
+    // Check FBO completeness
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDeleteFramebuffers(1, &fbo);
+        glDeleteTextures(1, outTexture);
+        *outTexture = 0;
         return 0;
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0); // Unbind the FBO
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     return fbo;
 }
 
-GLuint* fbo = NULL;
-GLuint* texture = NULL;
+static GLuint fbo = 0;
+static GLuint texture = 0;
 
 void rlSetHeadlessRenderViewport(int width, int height) {
-    if (fbo != NULL) return;
-    texture = RL_CALLOC(1, sizeof(GLuint));
-    fbo = createFBO(texture, width, height);
+    if (fbo != 0) return;
 
-    // Render to the FBO
-    glBindFramebuffer(GL_FRAMEBUFFER, *fbo);
+    fbo = createFBO(&texture, width, height);
+
+    if (fbo == 0) {
+        // handle failure
+        return;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glViewport(0, 0, width, height);
 }
 
 void rlUnsetHeadlessRenderViewport() {
-    if (fbo == NULL) return;
+    if (fbo == 0) return;
+
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glDeleteFramebuffers(1, fbo);
-    glDeleteTextures(1, texture);
-    fbo = NULL;
+    glDeleteFramebuffers(1, &fbo);
+    glDeleteTextures(1, &texture);
+
+    fbo = 0;
+    texture = 0;
 }
 
 // Vertex Buffer Object deinitialization (memory free)

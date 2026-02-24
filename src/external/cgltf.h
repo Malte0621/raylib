@@ -101,6 +101,12 @@
 extern "C" {
 #endif
 
+#define READ16LE(S) ((255 & ((uint8_t*)S)[1]) << 8 | (255 & ((uint8_t*)S)[0]))
+
+#define READ32LE(S)                                                    \
+  ((uint32_t)(255 & ((uint8_t*)S)[3]) << 030 | (uint32_t)(255 & ((uint8_t*)S)[2]) << 020 | \
+   (uint32_t)(255 & ((uint8_t*)S)[1]) << 010 | (uint32_t)(255 & ((uint8_t*)S)[0]) << 000)
+
 typedef size_t cgltf_size;
 typedef long long int cgltf_ssize;
 typedef float cgltf_float;
@@ -500,6 +506,16 @@ typedef struct cgltf_iridescence
 	cgltf_texture_view iridescence_thickness_texture;
 } cgltf_iridescence;
 
+#if defined(PLATFORM_PSL1GHT)
+typedef struct cgltf_diffuse_transmission
+{
+	cgltf_texture_view diffuse_transmission_texture;
+	cgltf_float diffuse_transmission_factor;
+	cgltf_float diffuse_transmission_color_factor[3];
+	cgltf_texture_view diffuse_transmission_color_texture;
+} cgltf_diffuse_transmission;
+#endif
+
 typedef struct cgltf_anisotropy
 {
 	cgltf_float anisotropy_strength;
@@ -525,6 +541,9 @@ typedef struct cgltf_material
 	cgltf_bool has_sheen;
 	cgltf_bool has_emissive_strength;
 	cgltf_bool has_iridescence;
+#if defined(PLATFORM_PSL1GHT)
+	cgltf_bool has_diffuse_transmission;
+#endif
 	cgltf_bool has_anisotropy;
 	cgltf_bool has_dispersion;
 	cgltf_pbr_metallic_roughness pbr_metallic_roughness;
@@ -537,6 +556,9 @@ typedef struct cgltf_material
 	cgltf_volume volume;
 	cgltf_emissive_strength emissive_strength;
 	cgltf_iridescence iridescence;
+#if defined(PLATFORM_PSL1GHT)
+	cgltf_diffuse_transmission diffuse_transmission;
+#endif
 	cgltf_anisotropy anisotropy;
 	cgltf_dispersion dispersion;
 	cgltf_texture_view normal_texture;
@@ -844,6 +866,10 @@ void cgltf_node_transform_world(const cgltf_node* node, cgltf_float* out_matrix)
 
 const uint8_t* cgltf_buffer_view_data(const cgltf_buffer_view* view);
 
+#if defined(PLATFORM_PSL1GHT)
+const cgltf_accessor* cgltf_find_accessor(const cgltf_primitive* prim, cgltf_attribute_type type, cgltf_int index);
+#endif
+
 cgltf_bool cgltf_accessor_read_float(const cgltf_accessor* accessor, cgltf_size index, cgltf_float* out, cgltf_size element_size);
 cgltf_bool cgltf_accessor_read_uint(const cgltf_accessor* accessor, cgltf_size index, cgltf_uint* out, cgltf_size element_size);
 cgltf_size cgltf_accessor_read_index(const cgltf_accessor* accessor, cgltf_size index);
@@ -1104,7 +1130,7 @@ cgltf_result cgltf_parse(const cgltf_options* options, const void* data, cgltf_s
 
 	uint32_t tmp;
 	// Magic
-	memcpy(&tmp, data, 4);
+	tmp = READ32LE(data);
 	if (tmp != GlbMagic)
 	{
 		if (fixed_options.type == cgltf_file_type_invalid)
@@ -1132,7 +1158,7 @@ cgltf_result cgltf_parse(const cgltf_options* options, const void* data, cgltf_s
 
 	const uint8_t* ptr = (const uint8_t*)data;
 	// Version
-	memcpy(&tmp, ptr + 4, 4);
+	tmp = READ32LE(ptr + 8);
 	uint32_t version = tmp;
 	if (version != GlbVersion)
 	{
@@ -1155,14 +1181,14 @@ cgltf_result cgltf_parse(const cgltf_options* options, const void* data, cgltf_s
 
 	// JSON chunk: length
 	uint32_t json_length;
-	memcpy(&json_length, json_chunk, 4);
+	json_length = READ32LE(json_chunk);
 	if (json_length > size - GlbHeaderSize - GlbChunkHeaderSize)
 	{
 		return cgltf_result_data_too_short;
 	}
 
 	// JSON chunk: magic
-	memcpy(&tmp, json_chunk + 4, 4);
+	tmp = READ32LE(json_chunk + 4);
 	if (tmp != GlbMagicJsonChunk)
 	{
 		return cgltf_result_unknown_format;
@@ -1180,14 +1206,14 @@ cgltf_result cgltf_parse(const cgltf_options* options, const void* data, cgltf_s
 
 		// Bin chunk: length
 		uint32_t bin_length;
-		memcpy(&bin_length, bin_chunk, 4);
+		bin_length = READ32LE(bin_chunk);
 		if (bin_length > size - GlbHeaderSize - GlbChunkHeaderSize - json_length - GlbChunkHeaderSize)
 		{
 			return cgltf_result_data_too_short;
 		}
 
 		// Bin chunk: magic
-		memcpy(&tmp, bin_chunk + 4, 4);
+		tmp = READ32LE(bin_chunk + 4);
 		if (tmp != GlbMagicBinChunk)
 		{
 			return cgltf_result_unknown_format;
@@ -1535,7 +1561,7 @@ static cgltf_size cgltf_calc_index_bound(cgltf_buffer_view* buffer_view, cgltf_s
 	case cgltf_component_type_r_16u:
 		for (size_t i = 0; i < count; ++i)
 		{
-			cgltf_size v = ((unsigned short*)data)[i];
+			cgltf_size v = READ16LE(((unsigned short*)data + i));
 			bound = bound > v ? bound : v;
 		}
 		break;
@@ -1543,7 +1569,7 @@ static cgltf_size cgltf_calc_index_bound(cgltf_buffer_view* buffer_view, cgltf_s
 	case cgltf_component_type_r_32u:
 		for (size_t i = 0; i < count; ++i)
 		{
-			cgltf_size v = ((unsigned int*)data)[i];
+			cgltf_size v = READ32LE(((unsigned int*)data + i));
 			bound = bound > v ? bound : v;
 		}
 		break;
@@ -2186,11 +2212,11 @@ static cgltf_ssize cgltf_component_read_integer(const void* in, cgltf_component_
 	switch (component_type)
 	{
 		case cgltf_component_type_r_16:
-			return *((const int16_t*) in);
+			return (int16_t)READ16LE(in);
 		case cgltf_component_type_r_16u:
-			return *((const uint16_t*) in);
+			return (uint16_t)READ16LE(in);
 		case cgltf_component_type_r_32u:
-			return *((const uint32_t*) in);
+			return (uint32_t)READ32LE(in);
 		case cgltf_component_type_r_8:
 			return *((const int8_t*) in);
 		case cgltf_component_type_r_8u:
@@ -2205,9 +2231,9 @@ static cgltf_size cgltf_component_read_index(const void* in, cgltf_component_typ
 	switch (component_type)
 	{
 		case cgltf_component_type_r_16u:
-			return *((const uint16_t*) in);
+			return (uint16_t)READ16LE(in);
 		case cgltf_component_type_r_32u:
-			return *((const uint32_t*) in);
+			return (uint32_t)READ32LE(in);
 		case cgltf_component_type_r_8u:
 			return *((const uint8_t*) in);
 		default:
@@ -2219,7 +2245,10 @@ static cgltf_float cgltf_component_read_float(const void* in, cgltf_component_ty
 {
 	if (component_type == cgltf_component_type_r_32f)
 	{
-		return *((const float*) in);
+		uint32_t tmp = READ32LE(in);
+		float ret;
+		memcpy(&ret, &tmp, sizeof(float));
+		return ret;
 	}
 
 	if (normalized)
@@ -2228,9 +2257,9 @@ static cgltf_float cgltf_component_read_float(const void* in, cgltf_component_ty
 		{
 			// note: glTF spec doesn't currently define normalized conversions for 32-bit integers
 			case cgltf_component_type_r_16:
-				return *((const int16_t*) in) / (cgltf_float)32767;
+				return ((int16_t)READ16LE(in)) / (cgltf_float)32767;
 			case cgltf_component_type_r_16u:
-				return *((const uint16_t*) in) / (cgltf_float)65535;
+				return ((uint16_t)READ16LE(in)) / (cgltf_float)65535;
 			case cgltf_component_type_r_8:
 				return *((const int8_t*) in) / (cgltf_float)127;
 			case cgltf_component_type_r_8u:
@@ -2311,6 +2340,20 @@ const uint8_t* cgltf_buffer_view_data(const cgltf_buffer_view* view)
 	result += view->offset;
 	return result;
 }
+
+#if defined(PLATFORM_PSL1GHT)
+const cgltf_accessor* cgltf_find_accessor(const cgltf_primitive* prim, cgltf_attribute_type type, cgltf_int index)
+{
+	for (cgltf_size i = 0; i < prim->attributes_count; ++i)
+	{
+		const cgltf_attribute* attr = &prim->attributes[i];
+		if (attr->type == type && attr->index == index)
+			return attr->data;
+	}
+
+	return NULL;
+}
+#endif
 
 cgltf_bool cgltf_accessor_read_float(const cgltf_accessor* accessor, cgltf_size index, cgltf_float* out, cgltf_size element_size)
 {
@@ -2419,13 +2462,13 @@ static cgltf_uint cgltf_component_read_uint(const void* in, cgltf_component_type
 			return *((const uint8_t*) in);
 
 		case cgltf_component_type_r_16:
-			return *((const int16_t*) in);
+			return (int16_t)READ16LE(in);
 
 		case cgltf_component_type_r_16u:
-			return *((const uint16_t*) in);
+			return (uint16_t)READ16LE(in);
 
 		case cgltf_component_type_r_32u:
-			return *((const uint32_t*) in);
+			return (uint32_t)READ32LE(in);
 
 		default:
 			return 0;
@@ -4278,6 +4321,54 @@ static int cgltf_parse_json_iridescence(cgltf_options* options, jsmntok_t const*
 	return i;
 }
 
+#if defined(PLATFORM_PSL1GHT)
+static int cgltf_parse_json_diffuse_transmission(cgltf_options* options, jsmntok_t const* tokens, int i, const uint8_t* json_chunk, cgltf_diffuse_transmission* out_diff_transmission)
+{
+	CGLTF_CHECK_TOKTYPE(tokens[i], JSMN_OBJECT);
+	int size = tokens[i].size;
+	++i;
+
+	// Defaults
+	cgltf_fill_float_array(out_diff_transmission->diffuse_transmission_color_factor, 3, 1.0f);
+	out_diff_transmission->diffuse_transmission_factor = 0.f;
+
+	for (int j = 0; j < size; ++j)
+	{
+		CGLTF_CHECK_KEY(tokens[i]);
+
+		if (cgltf_json_strcmp(tokens + i, json_chunk, "diffuseTransmissionFactor") == 0)
+		{
+			++i;
+			out_diff_transmission->diffuse_transmission_factor = cgltf_json_to_float(tokens + i, json_chunk);
+			++i;
+		}
+		else if (cgltf_json_strcmp(tokens + i, json_chunk, "diffuseTransmissionTexture") == 0)
+		{
+			i = cgltf_parse_json_texture_view(options, tokens, i + 1, json_chunk, &out_diff_transmission->diffuse_transmission_texture);
+		}
+		else if (cgltf_json_strcmp(tokens + i, json_chunk, "diffuseTransmissionColorFactor") == 0)
+		{
+			i = cgltf_parse_json_float_array(tokens, i + 1, json_chunk, out_diff_transmission->diffuse_transmission_color_factor, 3);
+		}
+		else if (cgltf_json_strcmp(tokens + i, json_chunk, "diffuseTransmissionColorTexture") == 0)
+		{
+			i = cgltf_parse_json_texture_view(options, tokens, i + 1, json_chunk, &out_diff_transmission->diffuse_transmission_color_texture);
+		}
+		else
+		{
+			i = cgltf_skip_json(tokens, i + 1);
+		}
+
+		if (i < 0)
+		{
+			return i;
+		}
+	}
+
+	return i;
+}
+#endif
+
 static int cgltf_parse_json_anisotropy(cgltf_options* options, jsmntok_t const* tokens, int i, const uint8_t* json_chunk, cgltf_anisotropy* out_anisotropy)
 {
 	CGLTF_CHECK_TOKTYPE(tokens[i], JSMN_OBJECT);
@@ -4766,6 +4857,13 @@ static int cgltf_parse_json_material(cgltf_options* options, jsmntok_t const* to
 					out_material->has_iridescence = 1;
 					i = cgltf_parse_json_iridescence(options, tokens, i + 1, json_chunk, &out_material->iridescence);
 				}
+#if defined(PLATFORM_PSL1GHT)
+				else if (cgltf_json_strcmp(tokens + i, json_chunk, "KHR_materials_diffuse_transmission") == 0)
+				{
+					out_material->has_diffuse_transmission = 1;
+					i = cgltf_parse_json_diffuse_transmission(options, tokens, i + 1, json_chunk, &out_material->diffuse_transmission);
+				}
+#endif
 				else if (cgltf_json_strcmp(tokens + i, json_chunk, "KHR_materials_anisotropy") == 0)
 				{
 					out_material->has_anisotropy = 1;
@@ -6628,6 +6726,11 @@ static int cgltf_fixup_pointers(cgltf_data* data)
 
 		CGLTF_PTRFIXUP(data->materials[i].iridescence.iridescence_texture.texture, data->textures, data->textures_count);
 		CGLTF_PTRFIXUP(data->materials[i].iridescence.iridescence_thickness_texture.texture, data->textures, data->textures_count);
+
+#if defined(PLATFORM_PSL1GHT)
+		CGLTF_PTRFIXUP(data->materials[i].diffuse_transmission.diffuse_transmission_texture.texture, data->textures, data->textures_count);
+		CGLTF_PTRFIXUP(data->materials[i].diffuse_transmission.diffuse_transmission_color_texture.texture, data->textures, data->textures_count);
+#endif
 
 		CGLTF_PTRFIXUP(data->materials[i].anisotropy.anisotropy_texture.texture, data->textures, data->textures_count);
 	}

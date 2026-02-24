@@ -1086,6 +1086,168 @@ void DrawGrid(int slices, float spacing)
     rlEnd();
 }
 
+// ------------------------------------------------------
+// Helpers
+// ------------------------------------------------------
+
+static inline int GetDirectionIndex(Vector3 n)
+{
+    int dir = 0;
+    float ax = fabsf(n.x);
+    float ay = fabsf(n.y);
+    float az = fabsf(n.z);
+
+    if (ax > ay && ax > az) dir = (n.x > 0) ? 0 : 1;      // +X or -X
+    else if (ay > az)       dir = (n.y > 0) ? 2 : 3;      // +Y or -Y
+    else                    dir = (n.z > 0) ? 4 : 5;      // +Z or -Z
+
+    return dir;
+}
+
+static void AddTriangleToMesh(Mesh* dst, Vector3 v0, Vector3 v1, Vector3 v2,
+    Vector3 n0, Vector3 n1, Vector3 n2,
+    Vector2 t0, Vector2 t1, Vector2 t2)
+{
+    int baseIndex = dst->vertexCount;
+
+    // Expand arrays
+    dst->vertices = RL_REALLOC(dst->vertices, (baseIndex + 3) * 3 * sizeof(float));
+    dst->normals = RL_REALLOC(dst->normals, (baseIndex + 3) * 3 * sizeof(float));
+    dst->texcoords = RL_REALLOC(dst->texcoords, (baseIndex + 3) * 2 * sizeof(float));
+    dst->indices = RL_REALLOC(dst->indices, (dst->triangleCount + 1) * 3 * sizeof(unsigned short));
+
+    float* verts = dst->vertices;
+    float* norms = dst->normals;
+    float* uvs = dst->texcoords;
+    unsigned short* inds = dst->indices;
+
+    // Add vertices
+    verts[baseIndex * 3 + 0] = v0.x; verts[baseIndex * 3 + 1] = v0.y; verts[baseIndex * 3 + 2] = v0.z;
+    verts[baseIndex * 3 + 3] = v1.x; verts[baseIndex * 3 + 4] = v1.y; verts[baseIndex * 3 + 5] = v1.z;
+    verts[baseIndex * 3 + 6] = v2.x; verts[baseIndex * 3 + 7] = v2.y; verts[baseIndex * 3 + 8] = v2.z;
+
+    // Add normals
+    norms[baseIndex * 3 + 0] = n0.x; norms[baseIndex * 3 + 1] = n0.y; norms[baseIndex * 3 + 2] = n0.z;
+    norms[baseIndex * 3 + 3] = n1.x; norms[baseIndex * 3 + 4] = n1.y; norms[baseIndex * 3 + 5] = n1.z;
+    norms[baseIndex * 3 + 6] = n2.x; norms[baseIndex * 3 + 7] = n2.y; norms[baseIndex * 3 + 8] = n2.z;
+
+    // Add texcoords
+    uvs[baseIndex * 2 + 0] = t0.x; uvs[baseIndex * 2 + 1] = t0.y;
+    uvs[baseIndex * 2 + 2] = t1.x; uvs[baseIndex * 2 + 3] = t1.y;
+    uvs[baseIndex * 2 + 4] = t2.x; uvs[baseIndex * 2 + 5] = t2.y;
+
+    // Add indices
+    inds[dst->triangleCount * 3 + 0] = baseIndex + 0;
+    inds[dst->triangleCount * 3 + 1] = baseIndex + 1;
+    inds[dst->triangleCount * 3 + 2] = baseIndex + 2;
+
+    dst->vertexCount += 3;
+    dst->triangleCount += 1;
+}
+
+static inline Vector3 GetVertex(const Mesh* mesh, int index)
+{
+    return (Vector3) {
+        mesh->vertices[index * 3 + 0],
+            mesh->vertices[index * 3 + 1],
+            mesh->vertices[index * 3 + 2]
+    };
+}
+
+static inline Vector3 GetNormal(const Mesh* mesh, int index)
+{
+    if (mesh->normals == NULL) return (Vector3) { 0, 0, 0 };
+    return (Vector3) {
+        mesh->normals[index * 3 + 0],
+            mesh->normals[index * 3 + 1],
+            mesh->normals[index * 3 + 2]
+    };
+}
+
+static inline Vector2 GetTexcoord(const Mesh* mesh, int index)
+{
+    if (mesh->texcoords == NULL) return (Vector2) { 0, 0 };
+    return (Vector2) {
+        mesh->texcoords[index * 2 + 0],
+            mesh->texcoords[index * 2 + 1]
+    };
+}
+
+// ------------------------------------------------------
+// Main splitting function
+// ------------------------------------------------------
+
+void SplitModelByDirection(Model* model)
+{
+    Mesh dirMeshes[6] = { 0 };
+
+    // Iterate all original meshes
+    for (int m = 0; m < model->meshCount; m++)
+    {
+        Mesh* src = &model->meshes[m];
+
+        // Assume triangles
+        for (int i = 0; i < src->triangleCount; i++)
+        {
+            int i0 = src->indices ? src->indices[i * 3 + 0] : i * 3 + 0;
+            int i1 = src->indices ? src->indices[i * 3 + 1] : i * 3 + 1;
+            int i2 = src->indices ? src->indices[i * 3 + 2] : i * 3 + 2;
+
+            Vector3 v0 = GetVertex(src, i0);
+            Vector3 v1 = GetVertex(src, i1);
+            Vector3 v2 = GetVertex(src, i2);
+
+            Vector3 n0 = GetNormal(src, i0);
+            Vector3 n1 = GetNormal(src, i1);
+            Vector3 n2 = GetNormal(src, i2);
+
+            if (Vector3Length(n0) < 0.0001f || Vector3Length(n1) < 0.0001f || Vector3Length(n2) < 0.0001f)
+            {
+                // Compute flat face normal if per-vertex not available
+                Vector3 e1 = Vector3Subtract(v1, v0);
+                Vector3 e2 = Vector3Subtract(v2, v0);
+                Vector3 fn = Vector3Normalize(Vector3CrossProduct(e1, e2));
+                n0 = n1 = n2 = fn;
+            }
+
+            Vector2 t0 = GetTexcoord(src, i0);
+            Vector2 t1 = GetTexcoord(src, i1);
+            Vector2 t2 = GetTexcoord(src, i2);
+
+            // Use the first normal to classify
+            int dir = GetDirectionIndex(n0);
+
+            AddTriangleToMesh(&dirMeshes[dir], v0, v1, v2, n0, n1, n2, t0, t1, t2);
+        }
+    }
+
+    // Free old meshes
+    for (int m = 0; m < model->meshCount; m++) UnloadMesh(model->meshes[m]);
+
+    RL_FREE(model->meshes);
+    RL_FREE(model->meshMaterial);
+
+    // Assign new
+    model->meshCount = 6;
+    model->meshes = RL_CALLOC(6, sizeof(Mesh));
+    model->meshMaterial = RL_CALLOC(6, sizeof(int));
+
+    for (int i = 0; i < 6; i++)
+    {
+        if (dirMeshes[i].vertexCount > 0)
+        {
+            UploadMesh(&dirMeshes[i], false);
+            model->meshes[i] = dirMeshes[i];
+            model->meshMaterial[i] = 0; // all share material[0]
+        }
+        else
+        {
+            model->meshes[i] = (Mesh){ 0 };
+            model->meshMaterial[i] = 0;
+        }
+    }
+}
+
 // Load model from files (mesh and material)
 Model LoadModelFromMemory(const char *fileData, int dataSize, const char *fileName, bool dontUnload)
 {
@@ -1127,6 +1289,9 @@ Model LoadModelFromMemory(const char *fileData, int dataSize, const char *fileNa
 
         if (model.meshMaterial == NULL) model.meshMaterial = (int *)RL_CALLOC(model.meshCount, sizeof(int));
     }
+
+	// split up the model by facing direction, so that we have one mesh per direction
+    SplitModelByDirection(&model);
 
     return model;
 }
@@ -1563,6 +1728,16 @@ void DrawMesh(Mesh mesh, Material material, Matrix transform)
     // This could be a dangerous approach because different meshes with different shaders can enable/disable some attributes
     if (!rlEnableVertexArray(mesh.vaoId))
     {
+#if defined(PLATFORM_PSL1GHT)
+        // PS3: glGetUniformLocation might be bugged so I'll just manually set some values
+        material.shader.locs[SHADER_LOC_VERTEX_POSITION] = 0;
+        material.shader.locs[SHADER_LOC_VERTEX_TEXCOORD01] = 1;
+        material.shader.locs[SHADER_LOC_VERTEX_NORMAL] = 2;
+        material.shader.locs[SHADER_LOC_VERTEX_COLOR] = 3;
+        material.shader.locs[SHADER_LOC_VERTEX_TANGENT] = 4;
+        material.shader.locs[SHADER_LOC_VERTEX_TEXCOORD02] = 5;
+#endif
+
         // Bind mesh VBO data: vertex position (shader-location = 0)
         rlEnableVertexBuffer(mesh.vboId[RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION]);
         rlSetVertexAttribute(material.shader.locs[SHADER_LOC_VERTEX_POSITION], 3, RL_FLOAT, 0, 0, 0);
@@ -5240,7 +5415,38 @@ static Model LoadGLTF(const char *fileData, int dataSize, const char *fileName, 
     // Macro to simplify attributes loading code
     #define LOAD_ATTRIBUTE(accesor, numComp, srcType, dstPtr) LOAD_ATTRIBUTE_CAST(accesor, numComp, srcType, dstPtr, srcType)
 
-    #define LOAD_ATTRIBUTE_CAST(accesor, numComp, srcType, dstPtr, dstType) \
+#if defined(PLATFORM_PSL1GHT)
+#define LOAD_ATTRIBUTE_CAST(accesor, numComp, srcType, dstPtr, dstType) \
+    { \
+        int n = 0; \
+        srcType *buffer = (srcType *)accesor->buffer_view->buffer->data + accesor->buffer_view->offset/sizeof(srcType) + accesor->offset/sizeof(srcType); \
+        char *dst_type_str = #dstType; \
+	    bool is_dst_float = false;\
+	    bool is_dst_ushort = false;\
+        if (strcmp(dst_type_str, "float") == 0 ) {is_dst_float = true;} \
+        if (strcmp(dst_type_str, "unsigned short") == 0 ) {is_dst_ushort = true;} \
+        for (unsigned int k = 0; k < accesor->count; k++) \
+        {\
+            for (int l = 0; l < numComp; l++) \
+            {\
+                dstPtr[numComp*k + l] = (dstType)buffer[n + l];\
+                if (is_dst_float)\
+		        {\
+		            union { uint32_t u; float f ;} x ;\
+                            x.f = dstPtr[numComp*k + l];\
+                            x.u = __builtin_bswap32(x.u);\
+		            dstPtr[numComp*k + l] = x.f;\
+		        }\
+                        if (is_dst_ushort)\
+		        {\
+		            dstPtr[numComp*k + l] = __builtin_bswap16(dstPtr[numComp*k + l]);\
+		        }\
+            }\
+            n += (int)(accesor->stride/sizeof(srcType));\
+        }\
+    }
+#else
+#define LOAD_ATTRIBUTE_CAST(accesor, numComp, srcType, dstPtr, dstType) \
     { \
         int n = 0; \
         srcType *buffer = (srcType *)accesor->buffer_view->buffer->data + accesor->buffer_view->offset/sizeof(srcType) + accesor->offset/sizeof(srcType); \
@@ -5253,6 +5459,7 @@ static Model LoadGLTF(const char *fileData, int dataSize, const char *fileName, 
             n += (int)(accesor->stride/sizeof(srcType));\
         }\
     }
+#endif
 
     Model model = { 0 };
 

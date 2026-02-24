@@ -1597,7 +1597,7 @@ RLAPI Mesh GenMeshHeightmap(Image heightmap, Vector3 size);                     
 RLAPI Mesh GenMeshCubicmap(Image cubicmap, Vector3 cubeSize);                               // Generate cubes-based map mesh from image data
 
 // Material loading/unloading functions
-RLAPI Material *LoadMaterials(const char *fileName, int *materialCount);                    // Load materials from model file
+RLAPI Material *LoadMaterials(const char* fileName, int dataSize, int* materialCount);                    // Load materials from model file
 RLAPI Material LoadMaterialDefault(void);                                                   // Load default material (Supports: DIFFUSE, SPECULAR, NORMAL maps)
 RLAPI bool IsMaterialValid(Material material);                                              // Check if a material is valid (shader assigned, map textures loaded in GPU)
 RLAPI void UnloadMaterial(Material material);                                               // Unload material from GPU memory (VRAM)
@@ -1605,7 +1605,7 @@ RLAPI void SetMaterialTexture(Material *material, int mapType, Texture2D texture
 RLAPI void SetModelMeshMaterial(Model *model, int meshId, int materialId);                  // Set material for a mesh
 
 // Model animations loading/unloading functions
-RLAPI ModelAnimation *LoadModelAnimations(const char *fileName, int *animCount);            // Load model animations from file
+RLAPI ModelAnimation *LoadModelAnimations(const char* fileName, int dataSize, int* animCount);            // Load model animations from file
 RLAPI void UpdateModelAnimation(Model model, ModelAnimation anim, int frame);               // Update model animation pose (CPU)
 RLAPI void UpdateModelAnimationBones(Model model, ModelAnimation anim, int frame);          // Update model animation mesh bone matrices (GPU skinning)
 RLAPI void UnloadModelAnimation(ModelAnimation anim);                                       // Unload animation data

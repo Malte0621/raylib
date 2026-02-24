@@ -230,6 +230,13 @@ ifeq ($(TARGET_PLATFORM),PLATFORM_ANDROID)
     endif
 
 endif
+ifeq ($(TARGET_PLATFORM),PLATFORM_PSL1GHT)
+    PLATFORM_SHELL = sh
+    ifeq ($(strip $(PSL1GHT)),)
+        $(error "Please set PSL1GHT in your environment. export PSL1GHT=<path>")
+    endif
+    include $(PSL1GHT)/ppu_rules
+endif
 
 # Define raylib graphics api depending on selected platform
 # NOTE: By default use OpenGL 3.3 on desktop platforms
@@ -260,6 +267,10 @@ ifeq ($(TARGET_PLATFORM),PLATFORM_WEB)
     #GRAPHICS = GRAPHICS_API_OPENGL_ES3
 endif
 ifeq ($(TARGET_PLATFORM),PLATFORM_ANDROID)
+    # By default use OpenGL ES 2.0 on Android
+    GRAPHICS = GRAPHICS_API_OPENGL_ES2
+endif
+ifeq ($(TARGET_PLATFORM),PLATFORM_PSL1GHT)
     # By default use OpenGL ES 2.0 on Android
     GRAPHICS = GRAPHICS_API_OPENGL_ES2
 endif
@@ -407,6 +418,10 @@ ifeq ($(TARGET_PLATFORM),PLATFORM_ANDROID)
     CFLAGS += -D__ANDROID__ -DPLATFORM_ANDROID -D__ANDROID_API__=$(ANDROID_API_VERSION)
 endif
 
+ifeq ($(TARGET_PLATFORM),PLATFORM_PSL1GHT)
+    CFLAGS+= -mcpu=cell $(MACHDEP)
+endif
+
 # Define required compilation flags for raylib SHARED lib
 ifeq ($(RAYLIB_LIBTYPE),SHARED)
     # make sure code is compiled as position independent
@@ -503,6 +518,10 @@ ifeq ($(TARGET_PLATFORM),PLATFORM_ANDROID)
     ifeq ($(ANDROID_ARCH),x86_64)
         INCLUDE_PATHS += -I$(ANDROID_SYSROOT)/usr/include/x86_64-linux-android
     endif
+endif
+
+ifeq ($(TARGET_PLATFORM),PLATFORM_PSL1GHT)
+    INCLUDE_PATHS += -I./external/khronos  $(LIBPSL1GHT_INC) -I$(PORTLIBS)/include
 endif
 
 # Define library paths containing required libs: LDFLAGS
