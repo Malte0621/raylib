@@ -32,12 +32,25 @@
 
 // Windows / D3D10 headers
 #define WIN32_LEAN_AND_MEAN
+#define NOGDI               // Prevent wingdi.h Rectangle() function conflicting with raylib's Rectangle type
 #define COBJMACROS
 #define CINTERFACE
 #include <windows.h>
 #include <d3d10.h>
 #include <d3dcompiler.h>
 #include <dxgi.h>
+
+// These DXGI formats were deprecated/removed from newer SDK headers but
+// are still valid format values for hardware that supports them.
+#ifndef DXGI_FORMAT_R5G6B5_UNORM
+    #define DXGI_FORMAT_R5G6B5_UNORM    ((DXGI_FORMAT)85)
+#endif
+#ifndef DXGI_FORMAT_R5G5B5A1_UNORM
+    #define DXGI_FORMAT_R5G5B5A1_UNORM  ((DXGI_FORMAT)86)
+#endif
+#ifndef DXGI_FORMAT_B4G4R4A4_UNORM
+    #define DXGI_FORMAT_B4G4R4A4_UNORM  ((DXGI_FORMAT)115)
+#endif
 
 #ifdef _MSC_VER
     #pragma comment(lib, "d3d10.lib")
@@ -224,7 +237,8 @@ static DXGI_FORMAT rlGetDXGIFormat(int rlFormat);
 static void rlLoadShaderDefault(void);
 static void rlUnloadShaderDefault(void);
 
-// Auxiliar math functions
+// Auxiliar math types and functions
+typedef struct rl_float16 { float v[16]; } rl_float16;
 static rl_float16 rlMatrixToFloatV(Matrix mat);
 static Matrix rlMatrixIdentity(void);
 static Matrix rlMatrixMultiply(Matrix left, Matrix right);

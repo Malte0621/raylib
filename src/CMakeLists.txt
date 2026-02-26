@@ -51,37 +51,48 @@ endif ()
 # NOTE: This may auto-select the best backend when GRAPHICS_BACKEND=Auto
 include(LibraryConfigurations)
 
-# Add graphics backend source files based on selected backend
-# (must come AFTER LibraryConfigurations so GRAPHICS is fully resolved)
-if (${GRAPHICS} MATCHES "GRAPHICS_API_DIRECT3D12")
-    list(APPEND raylib_sources rl_backend_d3d12.c)
-    list(APPEND raylib_public_headers rl_backend.h)
-    MESSAGE(STATUS "Graphics Backend: Direct3D 12")
-elseif (${GRAPHICS} MATCHES "GRAPHICS_API_DIRECT3D11")
-    list(APPEND raylib_sources rl_backend_d3d11.c)
-    list(APPEND raylib_public_headers rl_backend.h)
-    MESSAGE(STATUS "Graphics Backend: Direct3D 11")
-elseif (${GRAPHICS} MATCHES "GRAPHICS_API_DIRECT3D10")
-    list(APPEND raylib_sources rl_backend_d3d10.c)
-    list(APPEND raylib_public_headers rl_backend.h)
-    MESSAGE(STATUS "Graphics Backend: Direct3D 10")
-elseif (${GRAPHICS} MATCHES "GRAPHICS_API_DIRECT3D9")
-    list(APPEND raylib_sources rl_backend_d3d9.c)
-    list(APPEND raylib_public_headers rl_backend.h)
-    MESSAGE(STATUS "Graphics Backend: Direct3D 9")
-elseif (${GRAPHICS} MATCHES "GRAPHICS_API_VULKAN")
-    list(APPEND raylib_sources rl_backend_vulkan.c)
-    list(APPEND raylib_public_headers rl_backend.h)
-    MESSAGE(STATUS "Graphics Backend: Vulkan")
-elseif (${GRAPHICS} MATCHES "GRAPHICS_API_METAL")
-    list(APPEND raylib_sources rl_backend_metal.m)
-    list(APPEND raylib_public_headers rl_backend.h)
-    MESSAGE(STATUS "Graphics Backend: Metal")
-elseif (${GRAPHICS} MATCHES "GRAPHICS_API_SOFTWARE")
-    list(APPEND raylib_sources rl_backend_software.c)
-    list(APPEND raylib_public_headers rl_backend.h)
-    MESSAGE(STATUS "Graphics Backend: Software (CPU)")
+# Add the ACTIVE backend source file based on GRAPHICS (the primary backend).
+# Only ONE backend can be compiled at a time because all backends implement
+# the same public rlgl API functions (rlVertex3f, rlBegin, rlglInit, etc.).
+# Compiling multiple would cause duplicate symbol linker errors.
+#
+# However, ALL available backend LIBRARIES are linked (via LibraryConfigurations)
+# so that the platform's graphics stack is fully available.
+#
+# The backend source map:
+set(_RL_BACKEND_MAP
+    "GRAPHICS_API_DIRECT3D12:backends/rl_backend_d3d12.c"
+    "GRAPHICS_API_DIRECT3D11:backends/rl_backend_d3d11.c"
+    "GRAPHICS_API_DIRECT3D10:backends/rl_backend_d3d10.c"
+    "GRAPHICS_API_DIRECT3D9:backends/rl_backend_d3d9.c"
+    "GRAPHICS_API_VULKAN:backends/rl_backend_vulkan.c"
+    "GRAPHICS_API_METAL:backends/rl_backend_metal.m"
+    "GRAPHICS_API_SOFTWARE:backends/rl_backend_software.c"
+)
+
+set(_RL_BACKEND_SOURCE_FOUND FALSE)
+foreach(_RL_ENTRY ${_RL_BACKEND_MAP})
+    string(REPLACE ":" ";" _RL_PARTS "${_RL_ENTRY}")
+    list(GET _RL_PARTS 0 _RL_DEFINE)
+    list(GET _RL_PARTS 1 _RL_SOURCE)
+    if ("${GRAPHICS}" STREQUAL "${_RL_DEFINE}")
+        list(APPEND raylib_sources ${_RL_SOURCE})
+        list(APPEND raylib_public_headers rl_backend.h)
+        set(_RL_BACKEND_SOURCE_FOUND TRUE)
+        message(STATUS "Active backend source: ${_RL_SOURCE}")
+        break()
+    endif()
+endforeach()
+
+if (NOT _RL_BACKEND_SOURCE_FOUND AND GRAPHICS)
+    message(STATUS "No backend source matched GRAPHICS=${GRAPHICS} (using OpenGL from rlgl.h)")
 endif()
+
+# Log all linked backend libraries for reference
+if (GRAPHICS_ALL_BACKENDS)
+    message(STATUS "All linked backend libraries: ${GRAPHICS_ALL_BACKENDS}")
+endif()
+message(STATUS "Primary Graphics Backend: ${GRAPHICS}")
 
 if (SUPPORT_MODULE_RAUDIO)
     MESSAGE(STATUS "Audio Backend: miniaudio")
@@ -90,6 +101,12 @@ else ()
 endif ()
 
 add_library(raylib ${raylib_sources} ${raylib_public_headers})
+
+# If Vulkan SDK headers were found, add them to include paths so
+# rl_backend_vulkan.c can #include <vulkan/vulkan.h>
+if (RL_VULKAN_AVAILABLE AND Vulkan_INCLUDE_DIRS)
+    target_include_directories(raylib PRIVATE ${Vulkan_INCLUDE_DIRS})
+endif()
 
 if (NOT BUILD_SHARED_LIBS)
     MESSAGE(STATUS "Building raylib static library")

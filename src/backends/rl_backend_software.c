@@ -223,7 +223,8 @@ static float *swGetDepthBuffer(void);
 static int swGetFBWidth(void);
 static int swGetFBHeight(void);
 
-// Auxiliar math functions
+// Auxiliar math types and functions
+typedef struct rl_float16 { float v[16]; } rl_float16;
 static rl_float16 rlMatrixToFloatV(Matrix mat);
 static Matrix rlMatrixIdentity(void);
 static Matrix rlMatrixMultiply(Matrix left, Matrix right);

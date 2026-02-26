@@ -37,6 +37,7 @@
 
 // Windows / D3D9 headers
 #define WIN32_LEAN_AND_MEAN
+#define NOGDI               // Prevent wingdi.h Rectangle() function conflicting with raylib's Rectangle type
 #define COBJMACROS
 #define CINTERFACE
 #include <windows.h>
@@ -212,7 +213,8 @@ static void rlSwizzleBGRAtoRGBA(const unsigned char *src, unsigned char *dst, in
 static void rlLoadShaderDefault(void);
 static void rlUnloadShaderDefault(void);
 
-// Auxiliar math functions
+// Auxiliar math types and functions
+typedef struct rl_float16 { float v[16]; } rl_float16;
 static rl_float16 rlMatrixToFloatV(Matrix mat);
 static Matrix rlMatrixIdentity(void);
 static Matrix rlMatrixMultiply(Matrix left, Matrix right);

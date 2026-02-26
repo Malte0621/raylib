@@ -127,16 +127,38 @@ endif ()
 # ---------------------------------------------------------------------------
 # Graphics backend selection (Auto / explicit / OFF)
 # Priority for Auto mode:
-#   Windows : DirectX 12 (if available) > DirectX 11  >  Vulkan (if SDK found)  >  OpenGL 3.3
+#   Windows : DirectX 12 (preferred, full mesh rendering implemented)
+#             Also links D3D11, D3D10, D3D9 so all backends are available
 #   macOS   : Metal        >  OpenGL 3.3
 #   Linux   : Vulkan (if SDK found)  >  OpenGL 3.3
 #   Other   : keep current GRAPHICS (OpenGL / ES)
+#
+# In Auto mode ALL detected backends are compiled in and their libraries
+# linked.  GRAPHICS is set to the primary/preferred backend.  The full
+# list is stored in GRAPHICS_ALL_BACKENDS for CompileDefinitions.cmake.
 # ---------------------------------------------------------------------------
+
+# Centralised Vulkan SDK check — needs both the library AND the headers.
+# The NVIDIA driver ships vulkan-1.dll but not vulkan.h; we must skip the
+# backend in that case.
+set(RL_VULKAN_AVAILABLE FALSE)
+find_package(Vulkan QUIET)
+if (Vulkan_FOUND)
+    if (Vulkan_INCLUDE_DIRS AND EXISTS "${Vulkan_INCLUDE_DIRS}/vulkan/vulkan.h")
+        set(RL_VULKAN_AVAILABLE TRUE)
+        message(STATUS "Vulkan SDK found (headers: ${Vulkan_INCLUDE_DIRS})")
+    else()
+        message(STATUS "Vulkan runtime found but SDK headers missing — Vulkan backend disabled")
+    endif()
+endif()
+
+set(GRAPHICS_ALL_BACKENDS "")   # Will hold *all* backend defines to compile
+
 if (${GRAPHICS_BACKEND} MATCHES "Auto")
     set(_RL_AUTO_BACKEND_CHOSEN FALSE)
 
     if (WIN32)
-        # Try DirectX 12 first (Windows 10+), then fall back to DirectX 11
+        # Detect D3D12 availability
         include(CheckCSourceCompiles)
         set(CMAKE_REQUIRED_LIBRARIES d3d12 dxgi)
         check_c_source_compiles("
@@ -146,40 +168,66 @@ if (${GRAPHICS_BACKEND} MATCHES "Auto")
         " RL_HAS_D3D12)
         unset(CMAKE_REQUIRED_LIBRARIES)
 
+        # --- Primary backend (determines GRAPHICS) ---
         if (RL_HAS_D3D12)
-            # D3D12 detected but the mesh rendering path (rl_backend_d3d12.c) is not yet complete:
-            # rlSetUniform/rlSetUniformMatrix are stubs, no shader reflection, no state setup before
-            # rlDrawVertexArray*, rlSetVertexAttribute is a no-op, rlEnableVertexBuffer has stride=0.
-            # Using D3D11 until D3D12 mesh rendering is implemented.
-            message(STATUS "[Auto] DirectX 12 SDK detected but mesh rendering path incomplete, using DirectX 11")
-            set(GRAPHICS "GRAPHICS_API_DIRECT3D11")
-            set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d11 d3dcompiler dxgi dxguid)
+            set(GRAPHICS "GRAPHICS_API_DIRECT3D12")
             set(_RL_AUTO_BACKEND_CHOSEN TRUE)
+            message(STATUS "[Auto] Primary backend: DirectX 12")
         else()
-            # DirectX 11 is always available on Windows 7+
             set(GRAPHICS "GRAPHICS_API_DIRECT3D11")
-            set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d11 d3dcompiler dxgi dxguid)
             set(_RL_AUTO_BACKEND_CHOSEN TRUE)
-            message(STATUS "[Auto] Selected DirectX 11 (native Windows API, D3D12 not available)")
+            message(STATUS "[Auto] Primary backend: DirectX 11 (D3D12 not available)")
         endif()
+
+        # --- Link and enable ALL available Windows backends ---
+        # D3D12
+        if (RL_HAS_D3D12)
+            list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_DIRECT3D12")
+            set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d12)
+        endif()
+        # D3D11 (always available on modern Windows)
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_DIRECT3D11")
+        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d11)
+        # D3D10
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_DIRECT3D10")
+        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d10)
+        # D3D9
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_DIRECT3D9")
+        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d9)
+        # Common DirectX libraries (d3dcompiler, dxgi, dxguid)
+        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3dcompiler dxgi dxguid)
+        # Vulkan (if SDK with headers found)
+        if (RL_VULKAN_AVAILABLE)
+            list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_VULKAN")
+            set(LIBS_PRIVATE ${LIBS_PRIVATE} ${Vulkan_LIBRARIES})
+        endif()
+        # Software (always available, no extra libs)
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_SOFTWARE")
+
+        message(STATUS "[Auto] All enabled backends: ${GRAPHICS_ALL_BACKENDS}")
     elseif (APPLE)
         find_library(METAL_LIBRARY Metal)
         if (METAL_LIBRARY)
             find_library(METALKIT_LIBRARY MetalKit)
             find_library(QUARTZCORE_LIBRARY QuartzCore)
             set(GRAPHICS "GRAPHICS_API_METAL")
+            list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_METAL")
             set(LIBS_PRIVATE ${LIBS_PRIVATE} ${METAL_LIBRARY} ${METALKIT_LIBRARY} ${QUARTZCORE_LIBRARY})
             set(_RL_AUTO_BACKEND_CHOSEN TRUE)
             message(STATUS "[Auto] Selected Metal (native Apple API)")
         endif()
+        # Software always available
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_SOFTWARE")
     elseif (UNIX AND NOT ANDROID AND NOT "${PLATFORM}" MATCHES "DRM|Web")
-        find_package(Vulkan QUIET)
-        if (Vulkan_FOUND)
+        if (RL_VULKAN_AVAILABLE)
             set(GRAPHICS "GRAPHICS_API_VULKAN")
+            list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_VULKAN")
             set(LIBS_PRIVATE ${LIBS_PRIVATE} ${Vulkan_LIBRARIES})
             set(_RL_AUTO_BACKEND_CHOSEN TRUE)
             message(STATUS "[Auto] Selected Vulkan (SDK found)")
         endif()
+        # Software always available
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_SOFTWARE")
     endif()
 
     if (NOT _RL_AUTO_BACKEND_CHOSEN)
@@ -195,55 +243,90 @@ if (${GRAPHICS_BACKEND} MATCHES "Auto")
     endif()
 
 elseif (NOT ${GRAPHICS_BACKEND} MATCHES "OFF")
-    # Explicit backend selection
+    # Explicit backend selection — sets the *primary* backend but still
+    # detects and links ALL available backends so they can be used at runtime.
     if (${GRAPHICS_BACKEND} MATCHES "DirectX12")
         if (NOT WIN32)
             message(FATAL_ERROR "DirectX12 backend is only supported on Windows")
         endif()
         set(GRAPHICS "GRAPHICS_API_DIRECT3D12")
-        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d12 d3dcompiler dxgi)
     elseif (${GRAPHICS_BACKEND} MATCHES "DirectX11")
         if (NOT WIN32)
             message(FATAL_ERROR "DirectX11 backend is only supported on Windows")
         endif()
         set(GRAPHICS "GRAPHICS_API_DIRECT3D11")
-        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d11 d3dcompiler dxgi dxguid)
     elseif (${GRAPHICS_BACKEND} MATCHES "DirectX10")
         if (NOT WIN32)
             message(FATAL_ERROR "DirectX10 backend is only supported on Windows")
         endif()
         set(GRAPHICS "GRAPHICS_API_DIRECT3D10")
-        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d10 d3dcompiler dxgi)
     elseif (${GRAPHICS_BACKEND} MATCHES "DirectX9")
         if (NOT WIN32)
             message(FATAL_ERROR "DirectX9 backend is only supported on Windows")
         endif()
         set(GRAPHICS "GRAPHICS_API_DIRECT3D9")
-        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d9 d3dcompiler)
     elseif (${GRAPHICS_BACKEND} MATCHES "Vulkan")
-        find_package(Vulkan QUIET)
-        if (Vulkan_FOUND)
-            set(LIBS_PRIVATE ${LIBS_PRIVATE} ${Vulkan_LIBRARIES})
-        elseif(WIN32)
-            set(LIBS_PRIVATE ${LIBS_PRIVATE} vulkan-1)
-        else()
-            set(LIBS_PRIVATE ${LIBS_PRIVATE} vulkan)
-        endif()
         set(GRAPHICS "GRAPHICS_API_VULKAN")
     elseif (${GRAPHICS_BACKEND} MATCHES "Metal")
         if (NOT APPLE)
             message(FATAL_ERROR "Metal backend is only supported on Apple platforms")
         endif()
-        find_library(METAL_LIBRARY Metal)
-        find_library(METALKIT_LIBRARY MetalKit)
-        find_library(QUARTZCORE_LIBRARY QuartzCore)
-        set(LIBS_PRIVATE ${LIBS_PRIVATE} ${METAL_LIBRARY} ${METALKIT_LIBRARY} ${QUARTZCORE_LIBRARY})
         set(GRAPHICS "GRAPHICS_API_METAL")
     elseif (${GRAPHICS_BACKEND} MATCHES "Software")
-        # Software renderer: pure CPU, no additional libraries required
         set(GRAPHICS "GRAPHICS_API_SOFTWARE")
     endif()
     message(STATUS "Graphics Backend Override: ${GRAPHICS_BACKEND} -> ${GRAPHICS}")
+
+    # Even in explicit mode, detect and link ALL available backends
+    if (WIN32)
+        include(CheckCSourceCompiles)
+        set(CMAKE_REQUIRED_LIBRARIES d3d12 dxgi)
+        check_c_source_compiles("
+            #include <initguid.h>
+            #include <d3d12.h>
+            int main(void) { D3D12CreateDevice(0, D3D_FEATURE_LEVEL_11_0, &IID_ID3D12Device, 0); return 0; }
+        " RL_HAS_D3D12_EXPLICIT)
+        unset(CMAKE_REQUIRED_LIBRARIES)
+
+        if (RL_HAS_D3D12_EXPLICIT)
+            list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_DIRECT3D12")
+            set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d12)
+        endif()
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_DIRECT3D11")
+        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d11)
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_DIRECT3D10")
+        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d10)
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_DIRECT3D9")
+        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3d9)
+        set(LIBS_PRIVATE ${LIBS_PRIVATE} d3dcompiler dxgi dxguid)
+
+        if (RL_VULKAN_AVAILABLE)
+            list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_VULKAN")
+            set(LIBS_PRIVATE ${LIBS_PRIVATE} ${Vulkan_LIBRARIES})
+        endif()
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_SOFTWARE")
+    elseif (APPLE)
+        find_library(METAL_LIBRARY Metal)
+        if (METAL_LIBRARY)
+            find_library(METALKIT_LIBRARY MetalKit)
+            find_library(QUARTZCORE_LIBRARY QuartzCore)
+            list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_METAL")
+            set(LIBS_PRIVATE ${LIBS_PRIVATE} ${METAL_LIBRARY} ${METALKIT_LIBRARY} ${QUARTZCORE_LIBRARY})
+        endif()
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_SOFTWARE")
+    elseif (UNIX AND NOT ANDROID)
+        if (RL_VULKAN_AVAILABLE)
+            list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_VULKAN")
+            set(LIBS_PRIVATE ${LIBS_PRIVATE} ${Vulkan_LIBRARIES})
+        endif()
+        list(APPEND GRAPHICS_ALL_BACKENDS "GRAPHICS_API_SOFTWARE")
+    endif()
+
+    # Ensure the primary backend is in the list
+    if (NOT "${GRAPHICS}" IN_LIST GRAPHICS_ALL_BACKENDS)
+        list(APPEND GRAPHICS_ALL_BACKENDS "${GRAPHICS}")
+    endif()
+    message(STATUS "[Explicit] All enabled backends: ${GRAPHICS_ALL_BACKENDS}")
 endif()
 
 set(LIBS_PRIVATE ${LIBS_PRIVATE} ${OPENAL_LIBRARY})

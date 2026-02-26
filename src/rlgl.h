@@ -215,7 +215,7 @@
 
 // Default internal render batch elements limits
 #ifndef RL_DEFAULT_BATCH_BUFFER_ELEMENTS
-    #if defined(GRAPHICS_API_OPENGL_11) || defined(GRAPHICS_API_OPENGL_33)
+    #if defined(GRAPHICS_API_OPENGL_11) || defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_EXTERNAL_BACKEND)
         // This is the maximum amount of elements (quads) per batch
         // NOTE: Be careful with text, every letter maps to a quad
         #define RL_DEFAULT_BATCH_BUFFER_ELEMENTS  8192
@@ -374,7 +374,7 @@
 //----------------------------------------------------------------------------------
 // Types and Structures Definition
 //----------------------------------------------------------------------------------
-#if (defined(__STDC__) && __STDC_VERSION__ >= 199901L) || (defined(_MSC_VER) && _MSC_VER >= 1800)
+#if (defined(__STDC__) && __STDC_VERSION__ >= 199901L) && !defined(_MSC_VER)
     #include <stdbool.h>
 #elif !defined(__cplusplus) && !defined(bool) && !defined(RL_BOOL_TYPE)
     // Boolean type
@@ -405,6 +405,13 @@ typedef struct rlVertexBuffer {
 #endif
 #if defined(GRAPHICS_API_OPENGL_ES2) && !defined(GRAPHICS_API_EXTERNAL_BACKEND)
     unsigned short *indices;    // Vertex indices (in case vertex data comes indexed) (6 indices per quad)
+#endif
+#if defined(GRAPHICS_API_EXTERNAL_BACKEND)
+    // Per-buffer vertex counters used by some external backends (D3D10, D3D9, Software)
+    int vCounter;               // Vertex position counter to process (and target to determine batch limit)
+    int tcCounter;              // Vertex texcoord counter to process
+    int ncCounter;              // Vertex normal counter to process
+    int cCounter;               // Vertex color counter to process
 #endif
     unsigned int vaoId;         // OpenGL Vertex Array Object id
     unsigned int vboId[5];      // OpenGL Vertex Buffer Objects id (5 types of vertex data)
